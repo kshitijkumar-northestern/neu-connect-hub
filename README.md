@@ -2,7 +2,7 @@
 
 Peer discovery and team formation for verified university students: profiles, explainable collaborator recommendations, projects, messaging, video rooms and Scan to Connect QR profiles.
 
-> **Status:** early development. Only the repository skeleton and the local database exist so far.
+> **Status:** early development. The repository skeleton, the local database and the web app scaffold exist so far.
 
 ## Stack
 
@@ -24,7 +24,17 @@ docker compose -f infra/compose/compose.yaml ps    # wait until postgres reports
 
 This starts PostgreSQL 16 with pgvector on `localhost:5432`, with a `nu_hub` database for development and `nu_hub_test` for the API test suite. To change the defaults, copy `infra/compose/.env.example` to `infra/compose/.env`; Compose reads `.env` from the compose file's folder. The test database is created only when the data volume is first initialised; add `down -v` to the same command to reset it.
 
-Setup instructions for the API and web app will be added as they are built.
+Run the web app (React + Webpack) in another terminal:
+
+```sh
+cd apps/web
+npm ci
+npm run dev        # http://localhost:8080; /api and /socket.io are proxied to localhost:8000
+```
+
+Web checks: `npm run lint`, `npm run typecheck`, `npm test` and `npm run build`. The build fails if any backend variable name from `apps/api/.env.example` appears in the bundle.
+
+Setup instructions for the API will be added as it is built.
 
 ## Repository layout
 
