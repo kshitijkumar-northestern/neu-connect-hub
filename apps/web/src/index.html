@@ -4,6 +4,23 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>NU Connect Hub</title>
+    <!-- Applies the saved or system theme before first paint, so the wrong theme never flashes.
+         Keep the key in sync with THEME_STORAGE_KEY in src/app/providers/ThemeProvider.tsx.
+         A Content Security Policy must allow this script by hash, computed from the built
+         dist/index.html: the production build minifies the script, so a source hash won't match. -->
+    <script id="theme-init">
+      (function () {
+        var stored = null;
+        try {
+          stored = window.localStorage.getItem("nu-theme");
+        } catch (e) {}
+        var dark =
+          stored === "dark" ||
+          (stored !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.toggle("dark", dark);
+        document.documentElement.style.colorScheme = dark ? "dark" : "light";
+      })();
+    </script>
   </head>
   <body>
     <noscript>NU Connect Hub needs JavaScript to run.</noscript>
