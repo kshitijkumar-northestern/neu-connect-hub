@@ -35,11 +35,14 @@ INTERNAL_ERROR_MESSAGE = "Something went wrong on our side."
 class AppError(Exception):
     """A deliberate failure with a stable code that clients can rely on."""
 
-    def __init__(self, status_code: int, code: str, message: str) -> None:
+    def __init__(
+        self, status_code: int, code: str, message: str, headers: dict[str, str] | None = None
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.code = code
         self.message = message
+        self.headers = headers
 
 
 def error_body(
@@ -56,7 +59,11 @@ def _request_id(request: Request) -> str | None:
 
 
 async def _app_error(request: Request, exc: AppError) -> JSONResponse:
-    return JSONResponse(error_body(exc.code, exc.message, _request_id(request)), exc.status_code)
+    return JSONResponse(
+        error_body(exc.code, exc.message, _request_id(request)),
+        exc.status_code,
+        headers=exc.headers,
+    )
 
 
 async def _http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:

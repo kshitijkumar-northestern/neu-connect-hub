@@ -8,7 +8,7 @@ from fastapi import FastAPI
 
 from app.core.config import Settings
 from app.main import create_app, create_http_app
-from tests.conftest import make_settings
+from tests.conftest import make_settings, production_settings
 
 HEX_ID = re.compile(r"^[0-9a-f]{32}$")
 
@@ -119,13 +119,7 @@ async def test_readiness_returns_503_quickly_when_the_database_is_down() -> None
 
 async def test_api_docs_are_served_outside_production_only() -> None:
     dev = create_app(make_settings(app_env="development"))
-    prod = create_app(
-        make_settings(
-            app_env="production",
-            session_secret="a-production-secret-with-more-than-32-characters",
-            web_origin="https://hub.example",
-        )
-    )
+    prod = create_app(production_settings())
 
     async with client_for(dev) as client:  # type: ignore[arg-type]
         assert (await client.get("/api/docs")).status_code == 200

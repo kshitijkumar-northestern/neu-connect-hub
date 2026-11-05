@@ -15,7 +15,8 @@ dependencies = [
   "asyncpg>=0.30",
   "alembic>=1.14",
   "pgvector>=0.3",
-  "pydantic>=2.9",
+  "pydantic[email]>=2.9",
+  "argon2-cffi>=23.1",
   "pydantic-settings>=2.6",
 ]
 
@@ -51,6 +52,10 @@ select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC", "RUF"]
 # The migration template always imports sqlalchemy and pgvector (autogenerate renders
 # vector columns through pgvector.sqlalchemy), so a given migration may not use them.
 "alembic/versions/**" = ["F401"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI dependencies are declared as argument defaults by design.
+extend-immutable-calls = ["fastapi.Depends"]
 
 [tool.ruff.lint.isort]
 # apps/api/alembic/ holds migrations; the import is the installed Alembic package.
