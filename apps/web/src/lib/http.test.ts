@@ -136,6 +136,56 @@ describe("apiFetch", () => {
     });
   });
 
+  it("keeps validation field errors from the envelope", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(
+        {
+          error: {
+            code: "validation_error",
+            message: "The request is invalid.",
+            request_id: "req-1",
+            fields: [{ location: "body.password", message: "String should have at least 12 characters" }],
+          },
+        },
+        { status: 422 },
+      ),
+    );
+
+    const error = await apiFetch("/auth/register", { method: "POST", json: {} }).catch((e: unknown) => e);
+
+    expect(error).toMatchObject({
+      code: "validation_error",
+      fields: [{ location: "body.password", message: "String should have at least 12 characters" }],
+    });
+  });
+
+  it("drops malformed field entries instead of passing them on", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(
+        {
+          error: {
+            code: "validation_error",
+            message: "x",
+            fields: [null, { message: "no location" }, { location: 3, message: "bad" }, { location: "body.email", message: "ok" }],
+          },
+        },
+        { status: 422 },
+      ),
+    );
+
+    const error = await apiFetch("/auth/login", { method: "POST", json: {} }).catch((e: unknown) => e);
+
+    expect(error).toMatchObject({ fields: [{ location: "body.email", message: "ok" }] });
+  });
+
+  it("has no field errors when the envelope lists none", async () => {
+    fetchMock.mockResolvedValue(new Response("oops", { status: 500 }));
+
+    const error = await apiFetch("/me").catch((e: unknown) => e);
+
+    expect(error).toMatchObject({ fields: [] });
+  });
+
   it("falls back to an http_<status> code for non-JSON error bodies", async () => {
     fetchMock.mockResolvedValue(
       new Response("<html>Bad Gateway</html>", { status: 502, statusText: "Bad Gateway" }),

@@ -6,17 +6,31 @@ export const CSRF_HEADER = "X-CSRF-Token";
 
 const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
+/** One invalid field from a 422 response, e.g. { location: "body.email", message: "..." }. */
+export interface FieldError {
+  location: string;
+  message: string;
+}
+
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
   readonly requestId: string | null;
+  readonly fields: readonly FieldError[];
 
-  constructor(status: number, code: string, message: string, requestId: string | null, options?: ErrorOptions) {
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    requestId: string | null,
+    options?: ErrorOptions & { fields?: readonly FieldError[] },
+  ) {
     super(message, options);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
     this.requestId = requestId;
+    this.fields = options?.fields ?? [];
   }
 }
 
@@ -29,7 +43,13 @@ export type ApiRequestInit = Omit<RequestInit, "body" | "credentials"> & {
 };
 
 interface ErrorEnvelope {
-  error?: { code?: string; message?: string; request_id?: string };
+  error?: { code?: string; message?: string; request_id?: string; fields?: unknown };
+}
+
+function isFieldError(value: unknown): value is FieldError {
+  if (typeof value !== "object" || value === null) return false;
+  const { location, message } = value as Record<string, unknown>;
+  return typeof location === "string" && typeof message === "string";
 }
 
 export function apiUrl(path: string): string {
@@ -114,6 +134,7 @@ export async function apiFetch<T>(path: string, init: ApiRequestInit = {}): Prom
       envelope?.code ?? `http_${response.status}`,
       envelope?.message ?? (response.statusText || "The request failed"),
       envelope?.request_id ?? headerRequestId,
+      { fields: Array.isArray(envelope?.fields) ? envelope.fields.filter(isFieldError) : [] },
     );
   }
 

@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
 
 import { installMatchMedia, resetMatchMedia } from "@/test/match-media";
 
@@ -30,4 +30,5 @@ afterEach(() => {
   if (!hasDom) return;
   cleanup();
   resetMatchMedia();
+  vi.unstubAllGlobals(); // e.g. a fake fetch from src/test/fake-api.ts
 });

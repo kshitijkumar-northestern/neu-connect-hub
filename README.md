@@ -46,6 +46,8 @@ npm ci
 npm run dev        # http://localhost:8080; /api and /socket.io are proxied to localhost:8000
 ```
 
+With both running, create an account at http://localhost:8080/register; the verification email lands in `apps/api/.dev-mail/`.
+
 Web checks: `npm run lint`, `npm run typecheck`, `npm test` and `npm run build`. The build fails if any backend variable name from `apps/api/.env.example` appears in the bundle.
 
 ## Continuous integration
