@@ -1,0 +1,25 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /apps/web
+    schedule:
+      interval: weekly
+    groups:
+      web-development:
+        dependency-type: development
+      web-production:
+        dependency-type: production
+
+  - package-ecosystem: pip
+    directory: /apps/api
+    schedule:
+      interval: weekly
+    groups:
+      api:
+        patterns: ["*"]
+
+  # Keeps the SHA-pinned actions in .github/workflows current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

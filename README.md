@@ -31,12 +31,12 @@ cd apps/api
 cp .env.example .env                  # local values only; never commit .env
 python3 -m venv .venv                 # or `python` if that is your Python 3.12
 source .venv/bin/activate
-python -m pip install -c requirements.lock -e ".[dev]"
+python -m pip install -c requirements.txt -e ".[dev]"
 alembic upgrade head
 uvicorn app.main:app --reload --port 8000
 ```
 
-`GET /api/v1/health` reports liveness and `GET /api/v1/health/ready` checks the database. Interactive API docs are at `/api/docs` outside production. API checks: `ruff check .`, `ruff format --check .`, `mypy`, `bandit -c pyproject.toml -r app` and `pytest` (the tests use the `nu_hub_test` database, never `nu_hub`). After changing dependencies in `pyproject.toml`, regenerate the lockfile with `pip-compile --extra dev --strip-extras -o requirements.lock pyproject.toml`.
+`GET /api/v1/health` reports liveness and `GET /api/v1/health/ready` checks the database. Interactive API docs are at `/api/docs` outside production. API checks: `ruff check .`, `ruff format --check .`, `mypy`, `bandit -c pyproject.toml -r app` and `pytest` (the tests use the `nu_hub_test` database, never `nu_hub`). After changing dependencies in `pyproject.toml`, regenerate the lockfile with `pip-compile --extra dev --strip-extras -o requirements.txt pyproject.toml`. `requirements.txt` is the pinned lockfile, applied as a constraints file.
 
 Run the web app (React + Webpack) in another terminal:
 
@@ -47,6 +47,16 @@ npm run dev        # http://localhost:8080; /api and /socket.io are proxied to l
 ```
 
 Web checks: `npm run lint`, `npm run typecheck`, `npm test` and `npm run build`. The build fails if any backend variable name from `apps/api/.env.example` appears in the bundle.
+
+## Continuous integration
+
+Every pull request and every push to `main` runs three GitHub Actions workflows. None of them deploys anything.
+
+- **web**: `npm ci`, lint, typecheck, tests and the production build, including the bundle secret check.
+- **api**: lint, format, mypy, the Alembic migration check and pytest against a pgvector Postgres service.
+- **security**: gitleaks over the full history, `npm audit` and `pip-audit` on the lockfiles, Bandit, and a Trivy filesystem scan. It also runs weekly.
+
+Actions are pinned to commit SHAs and kept current by Dependabot. The scanner images are pinned in `security.yml` and bumped by hand.
 
 ## Repository layout
 
