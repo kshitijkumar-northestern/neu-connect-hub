@@ -6,8 +6,9 @@ from urllib.parse import urlsplit
 from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+API_ROOT = Path(__file__).resolve().parents[2]
 # apps/api/.env, wherever the process was started from (repo root, apps/api, CI).
-ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+ENV_FILE = API_ROOT / ".env"
 
 # Values shipped in apps/api/.env.example. They are fine locally and refused in production.
 PLACEHOLDER_SECRETS = frozenset({"replace_with_random_local_secret", "replace_if_needed"})
@@ -31,9 +32,47 @@ class Settings(BaseSettings):
     db_connect_timeout_seconds: float = 5.0
     readiness_timeout_seconds: float = 2.0
 
+    # Registration is limited to these campus email domains (comma-separated).
+    allowed_email_domains: str = ""
+
+    # Mail: "dev" writes messages to dev_mail_dir (never to logs); "smtp" sends through a provider.
+    mail_backend: Literal["dev", "smtp"] = "dev"
+    mail_from: str = "NU Connect Hub <no-reply@localhost>"
+    dev_mail_dir: Path = API_ROOT / ".dev-mail"
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None  # the password is EMAIL_PROVIDER_API_KEY
+
+    # Sessions and single-use tokens.
+    session_idle_timeout_seconds: int = 7 * 24 * 3600
+    session_absolute_lifetime_seconds: int = 30 * 24 * 3600
+    verification_token_ttl_seconds: int = 24 * 3600
+    password_reset_token_ttl_seconds: int = 3600
+    # Set to the registrable domain (e.g. "hub.example") when web and API are on sibling hosts,
+    # so the web app can read the CSRF cookie. Empty means host-only cookies.
+    cookie_domain: str | None = None
+
+    # Argon2id cost. The defaults match argon2-cffi's RFC 9106 low-memory profile; tests lower them.
+    argon2_time_cost: int = 3
+    argon2_memory_cost_kib: int = 65536
+    argon2_parallelism: int = 4
+
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
+
+    @property
+    def allowed_domains(self) -> frozenset[str]:
+        return frozenset(
+            domain.strip().lower()
+            for domain in self.allowed_email_domains.split(",")
+            if domain.strip()
+        )
+
+    @property
+    def cookie_secure(self) -> bool:
+        """Secure cookies whenever the site is served over https (always, in production)."""
+        return self.web_origin.startswith("https://")
 
     @field_validator("database_url")
     @classmethod
@@ -84,6 +123,12 @@ class Settings(BaseSettings):
             raise ValueError("EMAIL_PROVIDER_API_KEY is still the placeholder value in production")
         if not self.web_origin.startswith("https://"):
             raise ValueError("WEB_ORIGIN must use https in production")
+        if self.mail_backend != "smtp" or not self.smtp_host:
+            raise ValueError("MAIL_BACKEND must be smtp with SMTP_HOST set in production")
+        if not self.allowed_domains:
+            raise ValueError(
+                "ALLOWED_EMAIL_DOMAINS must list at least one campus domain in production"
+            )
         return self
 
 

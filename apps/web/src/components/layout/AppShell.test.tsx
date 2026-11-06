@@ -1,22 +1,30 @@
 import { act, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { THEME_STORAGE_KEY, ThemeProvider } from "@/app/providers/ThemeProvider";
 import { AppShell } from "@/components/layout/AppShell";
 import { BrandMark } from "@/components/layout/BrandMark";
 import logoOnDark from "@/assets/brand/logo-dark.svg";
 import logoOnLight from "@/assets/brand/logo-light.svg";
+import { AuthProvider } from "@/features/auth/AuthProvider";
+import { apiError, fakeApi } from "@/test/fake-api";
 import { setSystemDark } from "@/test/match-media";
+
+beforeEach(() => {
+  fakeApi({ "GET /me": apiError(401, "unauthorized") });
+});
 
 function renderShell() {
   return render(
     <ThemeProvider>
-      <MemoryRouter>
-        <AppShell>
-          <p>page content</p>
-        </AppShell>
-      </MemoryRouter>
+      <AuthProvider>
+        <MemoryRouter>
+          <AppShell>
+            <p>page content</p>
+          </AppShell>
+        </MemoryRouter>
+      </AuthProvider>
     </ThemeProvider>,
   );
 }

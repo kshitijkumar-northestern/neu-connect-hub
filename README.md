@@ -36,7 +36,7 @@ alembic upgrade head
 uvicorn app.main:app --reload --port 8000
 ```
 
-`GET /api/v1/health` reports liveness and `GET /api/v1/health/ready` checks the database. Interactive API docs are at `/api/docs` outside production. API checks: `ruff check .`, `ruff format --check .`, `mypy`, `bandit -c pyproject.toml -r app` and `pytest` (the tests use the `nu_hub_test` database, never `nu_hub`). After changing dependencies in `pyproject.toml`, regenerate the lockfile with `pip-compile --extra dev --strip-extras -o requirements.txt pyproject.toml`. `requirements.txt` is the pinned lockfile, applied as a constraints file.
+Accounts are limited to the campus domains in `ALLOWED_EMAIL_DOMAINS`. In development, verification and password-reset emails are written to `apps/api/.dev-mail/` instead of being sent, so open the newest file there to follow the link. `GET /api/v1/health` reports liveness and `GET /api/v1/health/ready` checks the database. Interactive API docs are at `/api/docs` outside production. API checks: `ruff check .`, `ruff format --check .`, `mypy`, `bandit -c pyproject.toml -r app` and `pytest` (the tests use the `nu_hub_test` database, never `nu_hub`). After changing dependencies in `pyproject.toml`, regenerate the lockfile with `pip-compile --extra dev --strip-extras -o requirements.txt pyproject.toml`. `requirements.txt` is the pinned lockfile, applied as a constraints file.
 
 Run the web app (React + Webpack) in another terminal:
 
@@ -45,6 +45,8 @@ cd apps/web
 npm ci
 npm run dev        # http://localhost:8080; /api and /socket.io are proxied to localhost:8000
 ```
+
+With both running, create an account at http://localhost:8080/register; the verification email lands in `apps/api/.dev-mail/`.
 
 Web checks: `npm run lint`, `npm run typecheck`, `npm test` and `npm run build`. The build fails if any backend variable name from `apps/api/.env.example` appears in the bundle.
 
