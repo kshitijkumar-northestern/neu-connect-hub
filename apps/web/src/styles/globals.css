@@ -1,8 +1,10 @@
-/* shadcn/ui manual setup with the neutral base theme.
-   These are the neutral base tokens that preset b27GdDLG builds on. */
+/* Design tokens from shadcn/ui preset b27GdDLG (style rhea, neutral, Manrope, radius 0.625rem),
+   applied with `npx shadcn@latest apply --preset b27GdDLG`. Edit tokens through the preset;
+   the only local change is the accessibility override at the end of this file. */
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "@fontsource-variable/manrope";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -45,6 +47,8 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  --font-heading: var(--font-sans);
+  --font-sans: 'Manrope Variable', sans-serif;
 }
 
 :root {
@@ -123,4 +127,15 @@
   body {
     @apply bg-background text-foreground;
   }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* Accessibility override. The preset's light --ring, oklch(0.708 0 0), gives focus
+   indicators only 2.59:1 against the background; WCAG 1.4.11 needs 3:1. This reuses the preset's
+   own muted-foreground value (4.73:1). Dark mode keeps the preset ring (4.18:1).
+   src/styles/contrast.node.test.ts fails if a future preset apply drops this. */
+:root {
+  --ring: oklch(0.556 0 0);
 }

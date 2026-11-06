@@ -65,7 +65,7 @@ module.exports = (_env, argv) => {
       ],
     },
     plugins: [
-      new HtmlWebpackPlugin({ template: "./src/index.html" }),
+      new HtmlWebpackPlugin({ template: "./src/index.html", favicon: "./src/assets/brand/favicon.svg" }),
       new webpack.DefinePlugin({
         __API_BASE_URL__: JSON.stringify(publicEnv.API_BASE_URL),
         __SOCKET_URL__: JSON.stringify(publicEnv.SOCKET_URL),
