@@ -3,11 +3,16 @@ import { createMemoryRouter, type RouteObject } from "react-router";
 import { RouterProvider } from "react-router/dom";
 import { describe, expect, it, vi } from "vitest";
 
+import { ThemeProvider } from "@/app/providers/ThemeProvider";
 import { routes } from "@/app/routes";
 
 function renderAt(path: string, routeTable: RouteObject[] = routes) {
   const router = createMemoryRouter(routeTable, { initialEntries: [path] });
-  return render(<RouterProvider router={router} />);
+  return render(
+    <ThemeProvider>
+      <RouterProvider router={router} />
+    </ThemeProvider>,
+  );
 }
 
 describe("routes", () => {
