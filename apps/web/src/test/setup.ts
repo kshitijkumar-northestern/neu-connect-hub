@@ -16,6 +16,10 @@ if (hasDom) {
   }
   globalThis.ResizeObserver ??= ResizeObserverStub as unknown as typeof ResizeObserver;
   Element.prototype.scrollIntoView ??= () => {};
+  // jsdom also lacks the Pointer Events capture methods Radix's Select uses to open on pointerdown.
+  Element.prototype.hasPointerCapture ??= () => false;
+  Element.prototype.setPointerCapture ??= () => undefined;
+  Element.prototype.releasePointerCapture ??= () => undefined;
   installMatchMedia();
 }
 

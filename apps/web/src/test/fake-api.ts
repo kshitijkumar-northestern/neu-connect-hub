@@ -8,7 +8,7 @@ export interface RecordedCall {
 }
 
 export type Reply = [status: number, body?: unknown];
-type Route = Reply | ((call: RecordedCall) => Reply | Promise<Reply>);
+export type Route = Reply | ((call: RecordedCall) => Reply | Promise<Reply>);
 
 export const ADA = {
   id: "11111111-1111-4111-8111-111111111111",

@@ -1,4 +1,4 @@
-import { Logout03Icon, UserCircleIcon } from "@hugeicons/core-free-icons";
+import { Logout03Icon, Settings02Icon, UserIcon, UserCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useNavigate } from "react-router";
 
@@ -39,10 +39,24 @@ export function AccountMenu() {
       <DropdownMenuContent align="end">
         <DropdownMenuLabel className="max-w-64 truncate">{state.user.email}</DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link to="/profile">
+            <HugeiconsIcon icon={UserIcon} aria-hidden="true" />
+            Your profile
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link to="/settings">
+            <HugeiconsIcon icon={Settings02Icon} aria-hidden="true" />
+            Settings
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem
           onSelect={() => {
-            // Home first: signing out while on a protected page would otherwise bounce via /sign-in.
-            void Promise.resolve(navigate("/", { replace: true })).then(signOut);
+            // Home first, rendered synchronously (navigations otherwise render as a transition):
+            // signing out while a protected page is still on screen would bounce via /sign-in.
+            void Promise.resolve(navigate("/", { replace: true, flushSync: true })).then(signOut);
           }}
         >
           <HugeiconsIcon icon={Logout03Icon} aria-hidden="true" />

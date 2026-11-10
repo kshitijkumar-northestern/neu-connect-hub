@@ -9,6 +9,10 @@ import { RegisterPage } from "@/features/auth/pages/RegisterPage";
 import { ResetPasswordPage } from "@/features/auth/pages/ResetPasswordPage";
 import { SignInPage } from "@/features/auth/pages/SignInPage";
 import { VerifyEmailPage } from "@/features/auth/pages/VerifyEmailPage";
+import { RequireAuth, RequireVerified } from "@/features/auth/guards";
+import { ProfilePage } from "@/features/profiles/pages/ProfilePage";
+import { PublicProfilePage } from "@/features/profiles/pages/PublicProfilePage";
+import { SettingsPage } from "@/features/profiles/pages/SettingsPage";
 
 export const routes: RouteObject[] = [
   {
@@ -23,6 +27,30 @@ export const routes: RouteObject[] = [
       { path: "verify-email", element: <VerifyEmailPage /> },
       { path: "forgot-password", element: <ForgotPasswordPage /> },
       { path: "reset-password", element: <ResetPasswordPage /> },
+      {
+        path: "profile",
+        element: (
+          <RequireVerified>
+            <ProfilePage />
+          </RequireVerified>
+        ),
+      },
+      {
+        path: "people/:userId",
+        element: (
+          <RequireVerified>
+            <PublicProfilePage />
+          </RequireVerified>
+        ),
+      },
+      {
+        path: "settings",
+        element: (
+          <RequireAuth>
+            <SettingsPage />
+          </RequireAuth>
+        ),
+      },
       { path: "*", element: <NotFoundPage /> },
     ],
   },

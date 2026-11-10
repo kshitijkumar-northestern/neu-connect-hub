@@ -11,6 +11,13 @@ const MESSAGES = new Map<string, string>([
   ["origin_not_allowed", "Your session check failed. Refresh the page and try again."],
   ["csrf_failed", "Your session check failed. Refresh the page and try again."],
   ["network_error", "Can't reach NU Connect Hub. Check your connection and try again."],
+  // Codes from apps/api/app/modules/profiles/service.py and trust.py.
+  ["unknown_skill", "One of the skills isn't on the list. Refresh the page and try again."],
+  ["unknown_interest", "One of the interests isn't on the list. Refresh the page and try again."],
+  ["cannot_target_self", "You can't do that to your own account."],
+  ["not_found", "That account couldn't be found."],
+  // From apps/api/app/modules/auth/service.py's delete_account.
+  ["password_incorrect", "That password isn't right."],
 ]);
 
 const FALLBACK = "Something went wrong. Please try again.";
