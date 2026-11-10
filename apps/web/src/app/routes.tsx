@@ -4,6 +4,11 @@ import { HomePage } from "@/app/HomePage";
 import { NotFoundPage } from "@/app/NotFoundPage";
 import { RootLayout } from "@/app/RootLayout";
 import { RouteErrorView } from "@/app/RouteErrorView";
+import { ForgotPasswordPage } from "@/features/auth/pages/ForgotPasswordPage";
+import { RegisterPage } from "@/features/auth/pages/RegisterPage";
+import { ResetPasswordPage } from "@/features/auth/pages/ResetPasswordPage";
+import { SignInPage } from "@/features/auth/pages/SignInPage";
+import { VerifyEmailPage } from "@/features/auth/pages/VerifyEmailPage";
 
 export const routes: RouteObject[] = [
   {
@@ -12,6 +17,12 @@ export const routes: RouteObject[] = [
     errorElement: <RouteErrorView />,
     children: [
       { index: true, element: <HomePage /> },
+      { path: "register", element: <RegisterPage /> },
+      { path: "sign-in", element: <SignInPage /> },
+      // Paths match the links the API emails (apps/api/app/modules/auth/service.py).
+      { path: "verify-email", element: <VerifyEmailPage /> },
+      { path: "forgot-password", element: <ForgotPasswordPage /> },
+      { path: "reset-password", element: <ResetPasswordPage /> },
       { path: "*", element: <NotFoundPage /> },
     ],
   },

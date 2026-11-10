@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
+import { AccountMenu } from "@/components/layout/AccountMenu";
 import { BrandMark } from "@/components/layout/BrandMark";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 
 /**
- * Application frame: a header with the brand and theme toggle, and the page content.
+ * Application frame: a header with the brand, account menu and theme toggle, and the page content.
  * Navigation joins the header once there are destinations, such as profiles and discovery.
  */
 export function AppShell({ children }: { children: ReactNode }) {
@@ -21,7 +22,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             <BrandMark />
             <span className="text-base">NU Connect Hub</span>
           </Link>
-          <ThemeToggle />
+          <div className="flex items-center gap-1">
+            <AccountMenu />
+            <ThemeToggle />
+          </div>
         </div>
       </header>
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 py-10 sm:py-16">{children}</main>

@@ -10,11 +10,14 @@ from app.api.v1 import router as api_v1_router
 from app.core.config import Settings, get_settings
 from app.core.errors import RequestContextMiddleware, install_error_handlers
 from app.core.logging import configure_logging
+from app.core.mail import Mailer, create_mailer
+from app.core.rate_limit import RateLimiter
 from app.db.session import create_database
+from app.modules.auth.passwords import PasswordService
 from app.realtime.server import create_socketio_server
 
 
-def create_http_app(settings: Settings) -> FastAPI:
+def create_http_app(settings: Settings, *, mailer: Mailer | None = None) -> FastAPI:
     configure_logging(settings)
     database = create_database(settings)
 
@@ -34,16 +37,23 @@ def create_http_app(settings: Settings) -> FastAPI:
     )
     app.state.settings = settings
     app.state.db = database
+    app.state.mailer = mailer or create_mailer(settings)
+    app.state.passwords = PasswordService(settings)
+    app.state.limiter = RateLimiter()
     install_error_handlers(app)
     app.add_middleware(RequestContextMiddleware)
     app.include_router(api_v1_router, prefix="/api/v1")
     return app
 
 
-def create_app(settings: Settings | None = None) -> socketio.ASGIApp:
+def create_app(
+    settings: Settings | None = None, *, mailer: Mailer | None = None
+) -> socketio.ASGIApp:
     settings = settings or get_settings()
-    sio = create_socketio_server(settings)
-    return socketio.ASGIApp(sio, other_asgi_app=create_http_app(settings))
+    http_app = create_http_app(settings, mailer=mailer)
+    sio = create_socketio_server(settings, http_app.state.db)
+    http_app.state.sio = sio  # lets logout and password reset disconnect sockets
+    return socketio.ASGIApp(sio, other_asgi_app=http_app)
 
 
 app = create_app()

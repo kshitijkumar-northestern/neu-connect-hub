@@ -1,19 +1,16 @@
-import { render, screen } from "@testing-library/react";
-import { createMemoryRouter, type RouteObject } from "react-router";
-import { RouterProvider } from "react-router/dom";
-import { describe, expect, it, vi } from "vitest";
+import { screen } from "@testing-library/react";
+import type { RouteObject } from "react-router";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ThemeProvider } from "@/app/providers/ThemeProvider";
 import { routes } from "@/app/routes";
+import { apiError, fakeApi } from "@/test/fake-api";
+import { renderApp } from "@/test/render-app";
 
-function renderAt(path: string, routeTable: RouteObject[] = routes) {
-  const router = createMemoryRouter(routeTable, { initialEntries: [path] });
-  return render(
-    <ThemeProvider>
-      <RouterProvider router={router} />
-    </ThemeProvider>,
-  );
-}
+const renderAt = renderApp;
+
+beforeEach(() => {
+  fakeApi({ "GET /me": apiError(401, "unauthorized") });
+});
 
 describe("routes", () => {
   it("renders the home page at /", async () => {
