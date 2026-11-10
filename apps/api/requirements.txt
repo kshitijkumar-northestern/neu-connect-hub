@@ -43,7 +43,7 @@ certifi==2026.10.23
     #   httpx
 cffi==2.1.1
     # via argon2-cffi-bindings
-click==8.5.0
+click==8.5.1
     # via
     #   pip-tools
     #   uvicorn
@@ -51,7 +51,7 @@ dnspython==2.9.2
     # via email-validator
 email-validator==2.3.0
     # via pydantic
-fastapi==0.162.0
+fastapi==0.162.1
     # via neu-connect-hub-api (pyproject.toml)
 frozenlist==1.8.0
     # via
@@ -117,12 +117,12 @@ propcache==0.5.4
     #   yarl
 pycparser==3.12
     # via cffi
-pydantic==2.14.2
+pydantic==2.14.3
     # via
     #   fastapi
     #   neu-connect-hub-api (pyproject.toml)
     #   pydantic-settings
-pydantic-core==2.50.2
+pydantic-core==2.50.4
     # via pydantic
 pydantic-settings==2.16.2
     # via neu-connect-hub-api (pyproject.toml)
@@ -154,7 +154,7 @@ pyyaml==6.0.3
     #   uvicorn
 rich==15.0.0
     # via bandit
-ruff==0.17.3
+ruff==0.17.4
     # via neu-connect-hub-api (pyproject.toml)
 simple-websocket==1.1.0
     # via python-engineio
