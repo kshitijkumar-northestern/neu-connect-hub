@@ -10,6 +10,7 @@ import { ResetPasswordPage } from "@/features/auth/pages/ResetPasswordPage";
 import { SignInPage } from "@/features/auth/pages/SignInPage";
 import { VerifyEmailPage } from "@/features/auth/pages/VerifyEmailPage";
 import { RequireAuth, RequireVerified } from "@/features/auth/guards";
+import { ConnectionsPage } from "@/features/connections/pages/ConnectionsPage";
 import { ProfilePage } from "@/features/profiles/pages/ProfilePage";
 import { PublicProfilePage } from "@/features/profiles/pages/PublicProfilePage";
 import { SettingsPage } from "@/features/profiles/pages/SettingsPage";
@@ -40,6 +41,14 @@ export const routes: RouteObject[] = [
         element: (
           <RequireVerified>
             <PublicProfilePage />
+          </RequireVerified>
+        ),
+      },
+      {
+        path: "connections",
+        element: (
+          <RequireVerified>
+            <ConnectionsPage />
           </RequireVerified>
         ),
       },

@@ -104,3 +104,159 @@ describe("PublicProfilePage", () => {
     expect(await screen.findByText(/now hidden from you/)).toBeInTheDocument();
   });
 });
+
+describe("PublicProfilePage: connections", () => {
+  const CONNECTION_ID = "44444444-4444-4444-8444-444444444444";
+
+  it("sends a connection request and can withdraw it", async () => {
+    const user = userEvent.setup();
+    const api = fakeApi({
+      "GET /me": [200, ADA],
+      [`GET /profiles/${OTHER_ID}`]: [200, OTHER_PROFILE],
+      "GET /connections": [200, []],
+      "POST /connections": [
+        201,
+        {
+          id: CONNECTION_ID,
+          state: "pending",
+          direction: "outgoing",
+          user_id: OTHER_ID,
+          display_name: "Grace Hopper",
+          created_at: "2026-11-05T00:00:00Z",
+          responded_at: null,
+          conversation_id: null,
+        },
+      ],
+      [`POST /connections/${CONNECTION_ID}/withdraw`]: [204],
+    });
+    renderApp(`/people/${OTHER_ID}`);
+
+    await user.click(await screen.findByRole("button", { name: "Connect" }));
+    expect(await screen.findByText("Request sent")).toBeInTheDocument();
+    expect(api.callsTo("POST /connections")[0]?.body).toEqual({ user_id: OTHER_ID });
+
+    await user.click(screen.getByRole("button", { name: "Withdraw" }));
+    expect(await screen.findByRole("button", { name: "Connect" })).toBeInTheDocument();
+    expect(api.callsTo(`POST /connections/${CONNECTION_ID}/withdraw`)).toHaveLength(1);
+  });
+
+  it("accepts an incoming request and shows Connected", async () => {
+    const user = userEvent.setup();
+    const INCOMING = {
+      id: CONNECTION_ID,
+      state: "pending",
+      direction: "incoming",
+      user_id: OTHER_ID,
+      display_name: "Grace Hopper",
+      created_at: "2026-11-05T00:00:00Z",
+      responded_at: null,
+      conversation_id: null,
+    };
+    fakeApi({
+      "GET /me": [200, ADA],
+      [`GET /profiles/${OTHER_ID}`]: [200, OTHER_PROFILE],
+      "GET /connections": [200, [INCOMING]],
+      [`POST /connections/${CONNECTION_ID}/accept`]: [
+        200,
+        { ...INCOMING, state: "accepted", responded_at: "2026-11-05T01:00:00Z", conversation_id: "conv-1" },
+      ],
+    });
+    renderApp(`/people/${OTHER_ID}`);
+
+    expect(await screen.findByText("Grace Hopper wants to connect")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Accept" }));
+
+    expect(await screen.findByText("Connected")).toBeInTheDocument();
+  });
+
+  it("declines an incoming request and goes back to Connect", async () => {
+    const user = userEvent.setup();
+    const INCOMING = {
+      id: CONNECTION_ID,
+      state: "pending",
+      direction: "incoming",
+      user_id: OTHER_ID,
+      display_name: "Grace Hopper",
+      created_at: "2026-11-05T00:00:00Z",
+      responded_at: null,
+      conversation_id: null,
+    };
+    fakeApi({
+      "GET /me": [200, ADA],
+      [`GET /profiles/${OTHER_ID}`]: [200, OTHER_PROFILE],
+      "GET /connections": [200, [INCOMING]],
+      [`POST /connections/${CONNECTION_ID}/decline`]: [204],
+    });
+    renderApp(`/people/${OTHER_ID}`);
+
+    await user.click(await screen.findByRole("button", { name: "Decline" }));
+    expect(await screen.findByRole("button", { name: "Connect" })).toBeInTheDocument();
+  });
+
+  it("reloads and shows the existing state when a request conflicts", async () => {
+    const user = userEvent.setup();
+    let requested = false;
+    fakeApi({
+      "GET /me": [200, ADA],
+      [`GET /profiles/${OTHER_ID}`]: [200, OTHER_PROFILE],
+      "GET /connections": () =>
+        requested
+          ? [
+              200,
+              [
+                {
+                  id: CONNECTION_ID,
+                  state: "accepted",
+                  direction: "outgoing",
+                  user_id: OTHER_ID,
+                  display_name: "Grace Hopper",
+                  created_at: "2026-11-01T00:00:00Z",
+                  responded_at: "2026-11-02T00:00:00Z",
+                  conversation_id: "conv-2",
+                },
+              ],
+            ]
+          : [200, []],
+      "POST /connections": () => {
+        requested = true;
+        return apiError(409, "connection_exists");
+      },
+    });
+    renderApp(`/people/${OTHER_ID}`);
+
+    await user.click(await screen.findByRole("button", { name: "Connect" }));
+    expect(await screen.findByText("Connected")).toBeInTheDocument();
+  });
+
+  it("shows an error when the request fails unexpectedly", async () => {
+    const user = userEvent.setup();
+    fakeApi({
+      "GET /me": [200, ADA],
+      [`GET /profiles/${OTHER_ID}`]: [200, OTHER_PROFILE],
+      "GET /connections": [200, []],
+      "POST /connections": apiError(500, "internal_error"),
+    });
+    renderApp(`/people/${OTHER_ID}`);
+
+    await user.click(await screen.findByRole("button", { name: "Connect" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Something went wrong. Please try again.");
+  });
+
+  it("hides the connection control once the student is blocked", async () => {
+    const user = userEvent.setup();
+    fakeApi({
+      "GET /me": [200, ADA],
+      [`GET /profiles/${OTHER_ID}`]: [200, OTHER_PROFILE],
+      "GET /connections": [200, []],
+      "POST /blocks": [204],
+    });
+    renderApp(`/people/${OTHER_ID}`);
+
+    expect(await screen.findByRole("button", { name: "Connect" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Block" }));
+    await user.click(screen.getByRole("button", { name: "Block" }));
+
+    expect(await screen.findByText(/now hidden from you/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Connect" })).not.toBeInTheDocument();
+  });
+});

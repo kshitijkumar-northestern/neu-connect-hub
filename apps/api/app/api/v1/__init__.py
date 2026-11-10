@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends
 from app.api.v1 import health
 from app.core.security import require_trusted_origin
 from app.modules.auth.router import router as auth_router
+from app.modules.connections.router import router as connections_router
 from app.modules.profiles.router import router as profiles_router
 from app.modules.profiles.trust_router import router as trust_router
 
@@ -14,3 +15,4 @@ router.include_router(health.router)
 router.include_router(auth_router)
 router.include_router(profiles_router)
 router.include_router(trust_router)
+router.include_router(connections_router)

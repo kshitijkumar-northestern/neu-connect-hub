@@ -14,9 +14,22 @@ describe("profile navigation", () => {
     await user.click(await screen.findByRole("button", { name: `Account: ${ADA.email}` }));
     const menu = await screen.findByRole("menu");
     expect(within(menu).getByRole("menuitem", { name: "Your profile" })).toHaveAttribute("href", "/profile");
+    expect(within(menu).getByRole("menuitem", { name: "Connections" })).toHaveAttribute("href", "/connections");
     await user.click(within(menu).getByRole("menuitem", { name: "Settings" }));
 
     expect(router.state.location.pathname).toBe("/settings");
+  });
+
+  it("links to connections from the account menu", async () => {
+    const user = userEvent.setup();
+    fakeApi({ "GET /me": [200, ADA], "GET /connections": [200, []] });
+    const { router } = renderApp("/");
+
+    await user.click(await screen.findByRole("button", { name: `Account: ${ADA.email}` }));
+    const menu = await screen.findByRole("menu");
+    await user.click(within(menu).getByRole("menuitem", { name: "Connections" }));
+
+    expect(router.state.location.pathname).toBe("/connections");
   });
 
   it("asks unverified students to verify before they can edit a profile", async () => {

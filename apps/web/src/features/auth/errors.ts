@@ -18,6 +18,9 @@ const MESSAGES = new Map<string, string>([
   ["not_found", "That account couldn't be found."],
   // From apps/api/app/modules/auth/service.py's delete_account.
   ["password_incorrect", "That password isn't right."],
+  // Codes from apps/api/app/modules/connections/service.py.
+  ["connection_exists", "You already have a request or connection with this student."],
+  ["connection_closed", "This request is no longer open."],
 ]);
 
 const FALLBACK = "Something went wrong. Please try again.";

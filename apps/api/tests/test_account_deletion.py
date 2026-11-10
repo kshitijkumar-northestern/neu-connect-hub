@@ -51,6 +51,8 @@ async def test_the_reference_scan_covers_every_account_table() -> None:
         "availability_slots",
         "blocks",
         "reports",
+        "connections",
+        "conversation_members",
     } <= tables
 
 
