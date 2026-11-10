@@ -14,6 +14,7 @@ describe("profile navigation", () => {
     await user.click(await screen.findByRole("button", { name: `Account: ${ADA.email}` }));
     const menu = await screen.findByRole("menu");
     expect(within(menu).getByRole("menuitem", { name: "Your profile" })).toHaveAttribute("href", "/profile");
+    expect(within(menu).getByRole("menuitem", { name: "Messages" })).toHaveAttribute("href", "/messages");
     expect(within(menu).getByRole("menuitem", { name: "Connections" })).toHaveAttribute("href", "/connections");
     await user.click(within(menu).getByRole("menuitem", { name: "Settings" }));
 

@@ -167,6 +167,7 @@ describe("PublicProfilePage: connections", () => {
     await user.click(screen.getByRole("button", { name: "Accept" }));
 
     expect(await screen.findByText("Connected")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Message" })).toHaveAttribute("href", "/messages/conv-1");
   });
 
   it("declines an incoming request and goes back to Connect", async () => {

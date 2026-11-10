@@ -1,4 +1,11 @@
-import { Logout03Icon, Settings02Icon, UserIcon, UserCircleIcon, UserMultipleIcon } from "@hugeicons/core-free-icons";
+import {
+  BubbleChatIcon,
+  Logout03Icon,
+  Settings02Icon,
+  UserIcon,
+  UserCircleIcon,
+  UserMultipleIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useNavigate } from "react-router";
 
@@ -43,6 +50,12 @@ export function AccountMenu() {
           <Link to="/profile">
             <HugeiconsIcon icon={UserIcon} aria-hidden="true" />
             Your profile
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link to="/messages">
+            <HugeiconsIcon icon={BubbleChatIcon} aria-hidden="true" />
+            Messages
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>

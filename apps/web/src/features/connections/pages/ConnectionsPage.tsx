@@ -78,10 +78,15 @@ function SentRow({
 
 function ConnectedRow({ connection }: { connection: Connection }) {
   return (
-    <li className="rounded-2xl border px-4 py-2">
+    <li className="flex items-center justify-between gap-4 rounded-2xl border px-4 py-2">
       <Link to={`/people/${connection.user_id}`} className="font-medium underline-offset-4 hover:underline">
         {nameFor(connection)}
       </Link>
+      {connection.conversation_id ? (
+        <Button asChild size="sm" variant="outline">
+          <Link to={`/messages/${connection.conversation_id}`}>Message</Link>
+        </Button>
+      ) : null}
     </li>
   );
 }
