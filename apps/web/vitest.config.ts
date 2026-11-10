@@ -15,5 +15,8 @@ export default defineConfig({
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}", "scripts/**/*.test.mjs"],
     restoreMocks: true,
+    // Shared CI runners are several times slower than a laptop, and a file's first test also pays
+    // for importing the app cold. The 5 s default timed out a full-page form test in CI.
+    testTimeout: 20_000,
   },
 });
