@@ -31,6 +31,8 @@ class Settings(BaseSettings):
 
     db_connect_timeout_seconds: float = 5.0
     readiness_timeout_seconds: float = 2.0
+    # Request bodies larger than this get 413 before any parsing. A full profile is under 16 KiB.
+    max_request_body_bytes: int = 64 * 1024
 
     # Registration is limited to these campus email domains (comma-separated).
     allowed_email_domains: str = ""

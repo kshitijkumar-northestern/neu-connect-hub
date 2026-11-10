@@ -18,6 +18,7 @@ dependencies = [
   "pydantic[email]>=2.9",
   "argon2-cffi>=23.1",
   "pydantic-settings>=2.6",
+  "tzdata>=2025.2",
 ]
 
 [project.optional-dependencies]
@@ -60,11 +61,12 @@ extend-immutable-calls = ["fastapi.Depends"]
 [tool.ruff.lint.isort]
 # apps/api/alembic/ holds migrations; the import is the installed Alembic package.
 known-third-party = ["alembic"]
+known-first-party = ["app", "scripts", "tests"]
 
 [tool.mypy]
 strict = true
 plugins = ["pydantic.mypy"]
-files = ["app"]
+files = ["app", "scripts"]
 
 [[tool.mypy.overrides]]
 # python-socketio ships no type information.

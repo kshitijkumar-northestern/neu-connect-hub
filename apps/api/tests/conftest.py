@@ -32,6 +32,8 @@ from app.db.base import Base  # noqa: E402
 from app.main import create_app  # noqa: E402
 
 API_ROOT = Path(__file__).resolve().parents[1]
+# Filled by migrations (the skill and interest lists), so tests must never empty them.
+REFERENCE_TABLES = frozenset({"skills", "interests"})
 
 
 def make_settings(**overrides: object) -> Settings:
@@ -131,9 +133,14 @@ async def db_session(engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
 
 @pytest.fixture
 async def clean_database(engine: AsyncEngine) -> AsyncIterator[AsyncEngine]:
-    """For tests whose writes go through the app's own connections: empty every table after."""
+    """For tests whose writes go through the app's own connections: empty every table after,
+    except the reference lists that ship with the migrations."""
     yield engine
-    tables = ", ".join(f'"{table.name}"' for table in Base.metadata.sorted_tables)
+    tables = ", ".join(
+        f'"{table.name}"'
+        for table in Base.metadata.sorted_tables
+        if table.name not in REFERENCE_TABLES
+    )
     if tables:
         async with engine.begin() as connection:
             await connection.execute(text(f"TRUNCATE {tables} CASCADE"))
@@ -142,6 +149,12 @@ async def clean_database(engine: AsyncEngine) -> AsyncIterator[AsyncEngine]:
 @pytest.fixture
 def mailer() -> MemoryMailer:
     return MemoryMailer()
+
+
+@pytest.fixture
+def app(settings: Settings, mailer: MemoryMailer) -> object:
+    """One app instance, for tests that sign in several students side by side."""
+    return create_app(settings, mailer=mailer)
 
 
 @pytest.fixture
