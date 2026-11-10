@@ -3,7 +3,7 @@
 import math
 import uuid
 
-from sqlalchemy import delete, select, text
+from sqlalchemy import and_, delete, func, or_, select, text, update
 from sqlalchemy.dialects.postgresql import Insert as PgInsert
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
 from app.core.rate_limit import Limit, RateLimiter
+from app.modules.chat.models import ConversationMember
+from app.modules.connections.models import Connection
 from app.modules.profiles.models import Block, Profile, Report
 from app.modules.profiles.schemas import BlockedUser
 
@@ -32,6 +34,8 @@ class TrustService:
         self.limiter = limiter
 
     async def block(self, blocker_id: uuid.UUID, target_id: uuid.UUID) -> None:
+        """Block, and in the same transaction end any open connection between the two and
+        deactivate their direct conversation."""
         self._not_self(blocker_id, target_id)
         statement = (
             pg_insert(Block)
@@ -39,6 +43,23 @@ class TrustService:
             .on_conflict_do_nothing(index_elements=[Block.blocker_id, Block.blocked_id])
         )
         await self._insert_or_not_found(statement)
+        pair = or_(
+            and_(Connection.sender_id == blocker_id, Connection.recipient_id == target_id),
+            and_(Connection.sender_id == target_id, Connection.recipient_id == blocker_id),
+        )
+        ended = await self.db.scalars(
+            update(Connection)
+            .where(pair, Connection.state.in_(("pending", "accepted")))
+            .values(state="ended", responded_at=func.now())
+            .returning(Connection.conversation_id)
+        )
+        conversations = [conversation for conversation in ended if conversation is not None]
+        if conversations:
+            await self.db.execute(
+                update(ConversationMember)
+                .where(ConversationMember.conversation_id.in_(conversations))
+                .values(active=False)
+            )
         await self.db.commit()
 
     async def unblock(self, blocker_id: uuid.UUID, target_id: uuid.UUID) -> None:
