@@ -67,6 +67,16 @@ describe("ConnectionsPage", () => {
     expect(screen.getByRole("button", { name: "Withdraw request to A student" })).toBeInTheDocument();
   });
 
+  it("links an accepted connection's Message button to its conversation", async () => {
+    fakeApi({ "GET /me": [200, ADA], "GET /connections": [200, [ACCEPTED]] });
+    renderApp("/connections");
+
+    expect(await screen.findByRole("link", { name: "Message" })).toHaveAttribute(
+      "href",
+      `/messages/${ACCEPTED.conversation_id}`,
+    );
+  });
+
   it("accepts a request and moves it to Your connections", async () => {
     const user = userEvent.setup();
     const api = fakeApi({

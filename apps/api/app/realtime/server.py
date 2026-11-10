@@ -1,21 +1,16 @@
-import uuid
 from http.cookies import CookieError, SimpleCookie
 from typing import Any
 
 import socketio
 
 from app.core.config import Settings
+from app.core.rate_limit import RateLimiter
 from app.core.security import SESSION_COOKIE
 from app.db.session import Database
 from app.modules.auth.sessions import load_session
-
-
-def session_room(session_hash: str) -> str:
-    return f"session:{session_hash}"
-
-
-def user_room(user_id: uuid.UUID) -> str:
-    return f"user:{user_id}"
+from app.realtime.chat import register_chat
+from app.realtime.presence import Presence
+from app.realtime.rooms import session_room, user_room
 
 
 def _session_cookie(cookie_header: str) -> str | None:
@@ -32,7 +27,9 @@ async def disconnect_room(sio: socketio.AsyncServer, room: str) -> None:
         await sio.disconnect(sid)
 
 
-def create_socketio_server(settings: Settings, database: Database) -> socketio.AsyncServer:
+def create_socketio_server(
+    settings: Settings, database: Database, limiter: RateLimiter, presence: Presence
+) -> socketio.AsyncServer:
     """Socket.IO server that accepts only signed-in browsers from the web origin."""
     sio = socketio.AsyncServer(
         async_mode="asgi",
@@ -54,6 +51,15 @@ def create_socketio_server(settings: Settings, database: Database) -> socketio.A
         )
         await sio.enter_room(sid, session_room(current.session.id_hash))
         await sio.enter_room(sid, user_room(current.user.id))
+        await hooks.joined(current.user.id)
 
+    async def disconnect(sid: str, reason: object = None) -> None:
+        await hooks.left(sid)
+
+    hooks = register_chat(sio, settings, database, limiter, presence)
     sio.on("connect", connect)
+    sio.on("disconnect", disconnect)
     return sio
+
+
+__all__ = ["create_socketio_server", "disconnect_room", "session_room", "user_room"]

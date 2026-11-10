@@ -265,9 +265,16 @@ function ConnectionControl({ profile }: { profile: PublicProfile }) {
           Connect
         </Button>
       ) : connection.state === "accepted" ? (
-        <Badge variant="secondary" role="status" className="h-auto px-3 py-1 text-sm">
-          Connected
-        </Badge>
+        <div className="flex items-center gap-3">
+          <Badge variant="secondary" role="status" className="h-auto px-3 py-1 text-sm">
+            Connected
+          </Badge>
+          {connection.conversation_id ? (
+            <Button asChild size="sm" variant="outline">
+              <Link to={`/messages/${connection.conversation_id}`}>Message</Link>
+            </Button>
+          ) : null}
+        </div>
       ) : connection.direction === "outgoing" ? (
         <div className="flex items-center gap-3">
           <p role="status" className="text-sm text-muted-foreground">

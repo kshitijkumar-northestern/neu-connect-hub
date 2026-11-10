@@ -5,6 +5,8 @@ export interface RecordedCall {
   key: string;
   body: unknown;
   headers: Headers;
+  /** The request's query string, e.g. "?before=cursor-1" (routes are keyed by path only). */
+  search: string;
 }
 
 export type Reply = [status: number, body?: unknown];
@@ -39,6 +41,7 @@ export function fakeApi(routes: Record<string, Route>) {
       key: `${method} ${url.pathname.replace(/^\/api\/v1/, "")}`,
       body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined,
       headers: new Headers(init?.headers),
+      search: url.search,
     };
     calls.push(call);
     const route = routes[call.key];
