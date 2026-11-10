@@ -11,6 +11,7 @@ from app.core.security import (
 )
 from app.db.session import get_session
 from app.modules.auth.schemas import (
+    DeleteAccountRequest,
     EmailRequest,
     LoginRequest,
     PasswordResetConfirm,
@@ -132,3 +133,20 @@ async def confirm_password_reset(
 @router.get("/me")
 async def me(current: CurrentSession = Depends(current_session)) -> UserResponse:
     return UserResponse.of(current.user)
+
+
+@router.delete("/me", status_code=204)
+async def delete_account(
+    request: Request,
+    body: DeleteAccountRequest,
+    current: CurrentSession = Depends(current_session),
+    service: AuthService = Depends(auth_service),
+) -> Response:
+    """Not behind require_verified: an unverified account is still the student's own account,
+    and they must be able to delete it."""
+    user_id = current.user.id
+    await service.delete_account(current.user, body.password)
+    await _disconnect(request, user_room(user_id))
+    response = Response(status_code=204)
+    clear_session_cookies(response, request.app.state.settings)
+    return response

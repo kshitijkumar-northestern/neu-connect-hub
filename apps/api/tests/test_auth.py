@@ -5,7 +5,6 @@ import logging
 import httpx
 import pytest
 from fastapi import Depends
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.core.rate_limit import Limit
@@ -20,61 +19,22 @@ from app.main import create_app, create_http_app
 from app.modules.auth.passwords import PasswordService
 from app.modules.auth.sessions import CurrentSession
 from tests.conftest import WEB_ORIGIN, MemoryMailer, make_settings
+from tests.helpers import (
+    EMAIL,
+    PASSWORD,
+    client_from,
+    csrf,
+    execute,
+    login,
+    register,
+    scalar,
+    signed_in,
+    verify_last,
+)
 
 pytestmark = pytest.mark.usefixtures("clean_database")
 
-EMAIL = "ada@northeastern.edu"
-PASSWORD = "correct horse battery"
 NEW_PASSWORD = "a different long passphrase"
-
-
-async def register(
-    client: httpx.AsyncClient, email: str = EMAIL, password: str = PASSWORD
-) -> httpx.Response:
-    return await client.post("/api/v1/auth/register", json={"email": email, "password": password})
-
-
-async def verify_last(client: httpx.AsyncClient, mailer: MemoryMailer) -> httpx.Response:
-    return await client.post(
-        "/api/v1/auth/verify", json={"token": mailer.token_from_last("/verify-email")}
-    )
-
-
-async def login(
-    client: httpx.AsyncClient, email: str = EMAIL, password: str = PASSWORD
-) -> httpx.Response:
-    return await client.post("/api/v1/auth/login", json={"email": email, "password": password})
-
-
-async def signed_in(
-    client: httpx.AsyncClient, mailer: MemoryMailer, email: str = EMAIL
-) -> httpx.Response:
-    await register(client, email)
-    await verify_last(client, mailer)
-    response = await login(client, email)
-    assert response.status_code == 200
-    return response
-
-
-def client_from(app: object, ip: str) -> httpx.AsyncClient:
-    transport = httpx.ASGITransport(app=app, client=(ip, 50000))  # type: ignore[arg-type]
-    return httpx.AsyncClient(
-        transport=transport, base_url="http://test", headers={"Origin": WEB_ORIGIN}
-    )
-
-
-def csrf(client: httpx.AsyncClient) -> dict[str, str]:
-    return {CSRF_HEADER: client.cookies[CSRF_COOKIE]}
-
-
-async def scalar(engine: AsyncEngine, sql: str, **params: object) -> object:
-    async with engine.connect() as connection:
-        return await connection.scalar(text(sql), params)
-
-
-async def execute(engine: AsyncEngine, sql: str, **params: object) -> None:
-    async with engine.begin() as connection:
-        await connection.execute(text(sql), params)
 
 
 # --- registration -------------------------------------------------------------------------

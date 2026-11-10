@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from app.api.v1 import router as api_v1_router
 from app.core.config import Settings, get_settings
 from app.core.errors import RequestContextMiddleware, install_error_handlers
+from app.core.limits import BodySizeLimitMiddleware
 from app.core.logging import configure_logging
 from app.core.mail import Mailer, create_mailer
 from app.core.rate_limit import RateLimiter
@@ -41,6 +42,8 @@ def create_http_app(settings: Settings, *, mailer: Mailer | None = None) -> Fast
     app.state.passwords = PasswordService(settings)
     app.state.limiter = RateLimiter()
     install_error_handlers(app)
+    # Added first, so it runs inside RequestContextMiddleware and its 413s carry a request ID.
+    app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_body_bytes)
     app.add_middleware(RequestContextMiddleware)
     app.include_router(api_v1_router, prefix="/api/v1")
     return app

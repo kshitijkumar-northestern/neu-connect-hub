@@ -48,6 +48,10 @@ class PasswordResetConfirm(_Request):
     password: NewPassword
 
 
+class DeleteAccountRequest(_Request):
+    password: Annotated[str, Field(min_length=1, max_length=PASSWORD_MAX_LENGTH)]
+
+
 class StatusResponse(BaseModel):
     status: str
 

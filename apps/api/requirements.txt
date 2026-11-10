@@ -187,6 +187,8 @@ typing-inspection==0.4.5
     #   fastapi
     #   pydantic
     #   pydantic-settings
+tzdata==2026.6
+    # via neu-connect-hub-api (pyproject.toml)
 uvicorn==0.54.0
     # via neu-connect-hub-api (pyproject.toml)
 uvloop==0.23.0

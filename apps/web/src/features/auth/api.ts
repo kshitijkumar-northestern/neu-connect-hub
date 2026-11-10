@@ -27,4 +27,6 @@ export const authApi = {
     apiFetch<void>("/auth/password-reset/request", { method: "POST", json: { email } }),
   confirmPasswordReset: (token: string, password: string) =>
     apiFetch<void>("/auth/password-reset/confirm", { method: "POST", json: { token, password } }),
+  /** Erases the account, its profile, blocks and sessions; reports it filed stay, unattributed. */
+  deleteAccount: (password: string) => apiFetch<void>("/me", { method: "DELETE", json: { password } }),
 };

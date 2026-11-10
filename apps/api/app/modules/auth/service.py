@@ -26,6 +26,8 @@ LOGIN_ATTEMPTS_PER_ACCOUNT = Limit(max_events=50, window_seconds=3600)
 EMAIL_REQUESTS_PER_IP = Limit(max_events=10, window_seconds=3600)
 EMAIL_REQUESTS_PER_ADDRESS = Limit(max_events=3, window_seconds=3600)
 TOKEN_SUBMISSIONS_PER_IP = Limit(max_events=30, window_seconds=900)
+# Guards against guessing the password of a stolen, already-signed-in session.
+ACCOUNT_DELETION_ATTEMPTS = Limit(max_events=5, window_seconds=900)
 
 INVALID_CREDENTIALS = "Email or password is incorrect."
 INVALID_LINK = "This link is invalid or has expired. Request a new one."
@@ -146,6 +148,16 @@ class AuthService:
 
     async def end_session(self, session: UserSession) -> None:
         await self.db.delete(session)
+        await self.db.commit()
+
+    async def delete_account(self, user: User, password: str) -> None:
+        """Erases the account and everything the database cascades from it. The password is
+        re-checked even though the caller already holds a valid session, because a stolen
+        session cookie alone must not be enough to erase the account."""
+        self._limit("delete-account", str(user.id), ACCOUNT_DELETION_ATTEMPTS)
+        if not await self.passwords.verify(user.password_hash, password):
+            raise AppError(403, "password_incorrect", "That password isn't right.")
+        await self.db.execute(delete(User).where(User.id == user.id))
         await self.db.commit()
 
     # --- password reset ---------------------------------------------------------------------

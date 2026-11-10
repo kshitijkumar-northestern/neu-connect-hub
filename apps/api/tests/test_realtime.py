@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.core.security import CSRF_COOKIE, CSRF_HEADER, SESSION_COOKIE
 from tests.conftest import WEB_ORIGIN, MemoryMailer
+from tests.helpers import connect
 
 pytestmark = pytest.mark.usefixtures("clean_database")
 
@@ -23,17 +24,6 @@ async def sign_in(base_url: str, mailer: MemoryMailer) -> httpx.AsyncClient:
     )
     response = await client.post("/api/v1/auth/login", json={"email": EMAIL, "password": PASSWORD})
     assert response.status_code == 200
-    return client
-
-
-async def connect(url: str, origin: str, session: str | None) -> socketio.AsyncClient:
-    # WebSocket closes immediately on disconnect; long-polling would hold a request open
-    # for the full ping interval (~25 s). Both transports go through the same checks.
-    headers = {"Origin": origin}
-    if session is not None:
-        headers["Cookie"] = f"{SESSION_COOKIE}={session}"
-    client = socketio.AsyncClient(reconnection=False)
-    await client.connect(url, headers=headers, transports=["websocket"], wait_timeout=5)
     return client
 
 
