@@ -3,7 +3,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, exists, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +14,7 @@ from app.core.rate_limit import Limit, RateLimiter
 from app.modules.auth.models import EmailVerification, PasswordReset, User, UserSession
 from app.modules.auth.passwords import PasswordService
 from app.modules.auth.tokens import hash_token, new_token
+from app.modules.chat.models import Conversation, ConversationMember, Message
 
 # Rate limits (sliding windows). Login attempts are counted *before* the password check, so
 # concurrent requests cannot race past a limit, and refunded when the login succeeds.
@@ -157,7 +158,28 @@ class AuthService:
         self._limit("delete-account", str(user.id), ACCOUNT_DELETION_ATTEMPTS)
         if not await self.passwords.verify(user.password_hash, password):
             raise AppError(403, "password_incorrect", "That password isn't right.")
+        conversation_ids = list(
+            await self.db.scalars(
+                select(ConversationMember.conversation_id).where(
+                    ConversationMember.user_id == user.id
+                )
+            )
+        )
+        # Their messages become tombstones ("message removed") for the other members; the
+        # author column is cleared by the foreign key when the account goes.
+        await self.db.execute(
+            update(Message)
+            .where(Message.author_id == user.id)
+            .values(body=None, removed_at=func.now())
+        )
         await self.db.execute(delete(User).where(User.id == user.id))
+        # A conversation nobody is left in goes too, with its messages.
+        await self.db.execute(
+            delete(Conversation).where(
+                Conversation.id.in_(conversation_ids),
+                ~exists().where(ConversationMember.conversation_id == Conversation.id),
+            )
+        )
         await self.db.commit()
 
     # --- password reset ---------------------------------------------------------------------

@@ -23,11 +23,18 @@ async def load_session(
 ) -> CurrentSession | None:
     """The live session for a cookie value, or None. Sessions that expired or belong to a
     suspended account are deleted on sight."""
+    return await load_session_by_hash(db, settings, hash_token(raw_cookie))
+
+
+async def load_session_by_hash(
+    db: AsyncSession, settings: Settings, id_hash: str
+) -> CurrentSession | None:
+    """As load_session, for callers that only kept the hash (sockets re-check it per event)."""
     row = (
         await db.execute(
             select(UserSession, User)
             .join(User, User.id == UserSession.user_id)
-            .where(UserSession.id_hash == hash_token(raw_cookie))
+            .where(UserSession.id_hash == id_hash)
         )
     ).first()
     if row is None:

@@ -15,6 +15,7 @@ from app.core.mail import Mailer, create_mailer
 from app.core.rate_limit import RateLimiter
 from app.db.session import create_database
 from app.modules.auth.passwords import PasswordService
+from app.realtime.presence import Presence
 from app.realtime.server import create_socketio_server
 
 
@@ -41,6 +42,7 @@ def create_http_app(settings: Settings, *, mailer: Mailer | None = None) -> Fast
     app.state.mailer = mailer or create_mailer(settings)
     app.state.passwords = PasswordService(settings)
     app.state.limiter = RateLimiter()
+    app.state.presence = Presence()
     install_error_handlers(app)
     # Added first, so it runs inside RequestContextMiddleware and its 413s carry a request ID.
     app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_body_bytes)
@@ -54,7 +56,8 @@ def create_app(
 ) -> socketio.ASGIApp:
     settings = settings or get_settings()
     http_app = create_http_app(settings, mailer=mailer)
-    sio = create_socketio_server(settings, http_app.state.db)
+    state = http_app.state
+    sio = create_socketio_server(settings, state.db, state.limiter, state.presence)
     http_app.state.sio = sio  # lets logout and password reset disconnect sockets
     return socketio.ASGIApp(sio, other_asgi_app=http_app)
 
