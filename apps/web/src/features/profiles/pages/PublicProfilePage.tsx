@@ -28,6 +28,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAuth } from "@/features/auth/AuthProvider";
 import { FormError } from "@/features/auth/components/FormError";
 import { errorMessage } from "@/features/auth/errors";
+import { connectionsApi, type Connection } from "@/features/connections/api";
 import { profilesApi, trustApi, type PublicProfile, type ReportReason } from "@/features/profiles/api";
 import { TextareaField } from "@/features/profiles/components/TextareaField";
 import { GOAL_LABELS, LEVEL_LABELS, REPORT_DETAILS_MAX, REPORT_REASONS, REPORT_REASON_LABELS, WEEKDAYS } from "@/features/profiles/constants";
@@ -188,6 +189,124 @@ function ReportAction({ userId, onBlocked }: { userId: string; onBlocked: () => 
   );
 }
 
+type ConnectionLoadState = "loading" | "ready" | "error";
+
+/** The Connect / Request sent / Accept-Decline / Connected control for another student's
+ * profile. Looks up the one connection (if any) between the viewer and this student. */
+function ConnectionControl({ profile }: { profile: PublicProfile }) {
+  const [load, setLoad] = useState<ConnectionLoadState>("loading");
+  const [connection, setConnection] = useState<Connection>();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+
+  useEffect(() => {
+    let cancelled = false;
+    connectionsApi
+      .list()
+      .then((result) => {
+        if (cancelled) return;
+        setConnection(result.find((candidate) => candidate.user_id === profile.user_id));
+        setLoad("ready");
+      })
+      .catch(() => {
+        if (!cancelled) setLoad("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profile.user_id]);
+
+  async function connect() {
+    setBusy(true);
+    setError(undefined);
+    try {
+      const result = await connectionsApi.request(profile.user_id);
+      setConnection(result);
+    } catch (failure) {
+      if (failure instanceof ApiError && failure.code === "connection_exists") {
+        try {
+          const existing = await connectionsApi.list();
+          setConnection(existing.find((candidate) => candidate.user_id === profile.user_id));
+          return;
+        } catch {
+          // Fall through to the generic error below.
+        }
+      }
+      setError(errorMessage(failure));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function respond(action: (id: string) => Promise<Connection | void>, onDone?: (result: Connection | void) => void) {
+    if (!connection) return;
+    setBusy(true);
+    setError(undefined);
+    try {
+      const result = await action(connection.id);
+      onDone?.(result);
+    } catch (failure) {
+      setError(errorMessage(failure));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (load === "loading") return null;
+  if (load === "error") {
+    return <p role="alert">Can't load connection status right now.</p>;
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <FormError>{error}</FormError>
+      {!connection ? (
+        <Button disabled={busy} onClick={() => void connect()}>
+          Connect
+        </Button>
+      ) : connection.state === "accepted" ? (
+        <Badge variant="secondary" role="status" className="h-auto px-3 py-1 text-sm">
+          Connected
+        </Badge>
+      ) : connection.direction === "outgoing" ? (
+        <div className="flex items-center gap-3">
+          <p role="status" className="text-sm text-muted-foreground">
+            Request sent
+          </p>
+          <Button
+            variant="outline"
+            disabled={busy}
+            onClick={() => void respond(connectionsApi.withdraw, () => setConnection(undefined))}
+          >
+            Withdraw
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+          <p role="status" className="text-sm text-muted-foreground">
+            {profile.display_name} wants to connect
+          </p>
+          <div className="flex gap-3">
+            <Button
+              disabled={busy}
+              onClick={() => void respond(connectionsApi.accept, (result) => setConnection(result ?? undefined))}
+            >
+              Accept
+            </Button>
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() => void respond(connectionsApi.decline, () => setConnection(undefined))}
+            >
+              Decline
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** How other students see a profile: name, headline, bio, goals, skills, interests, time zone
  * and availability. A 404 (hidden, missing or blocked) always reads the same neutral message. */
 export function PublicProfilePage() {
@@ -338,18 +457,21 @@ export function PublicProfilePage() {
       ) : null}
 
       {!isOwn ? (
-        <div className="flex flex-wrap items-center gap-3">
-          {blocked ? (
-            <p className="text-sm text-muted-foreground">
-              This student is now hidden from you.{" "}
-              <Link className="underline underline-offset-4" to="/settings">
-                Manage blocked students
-              </Link>
-            </p>
-          ) : (
-            <BlockAction userId={profile.user_id} onBlocked={() => setBlocked(true)} />
-          )}
-          <ReportAction userId={profile.user_id} onBlocked={() => setBlocked(true)} />
+        <div className="flex flex-col gap-4">
+          {!blocked ? <ConnectionControl profile={profile} /> : null}
+          <div className="flex flex-wrap items-center gap-3">
+            {blocked ? (
+              <p className="text-sm text-muted-foreground">
+                This student is now hidden from you.{" "}
+                <Link className="underline underline-offset-4" to="/settings">
+                  Manage blocked students
+                </Link>
+              </p>
+            ) : (
+              <BlockAction userId={profile.user_id} onBlocked={() => setBlocked(true)} />
+            )}
+            <ReportAction userId={profile.user_id} onBlocked={() => setBlocked(true)} />
+          </div>
         </div>
       ) : null}
     </section>
