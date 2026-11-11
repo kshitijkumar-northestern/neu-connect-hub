@@ -34,6 +34,7 @@ class MessageOut(BaseModel):
     id: uuid.UUID
     conversation_id: uuid.UUID
     author_id: uuid.UUID | None
+    author_name: str | None
     body: str | None
     client_msg_id: uuid.UUID | None
     created_at: datetime
@@ -57,7 +58,9 @@ class OtherMember(BaseModel):
 
 class ConversationOut(BaseModel):
     id: uuid.UUID
-    kind: Literal["direct"]
-    other: OtherMember
+    kind: Literal["direct", "project"]
+    name: str | None
+    project_id: uuid.UUID | None
+    other: OtherMember | None
     last_message: MessageOut | None
     updated_at: datetime

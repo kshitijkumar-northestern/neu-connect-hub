@@ -15,6 +15,7 @@ from app.modules.chat.models import ConversationMember
 from app.modules.connections.models import Connection
 from app.modules.profiles.models import Block, Profile, Report
 from app.modules.profiles.schemas import BlockedUser
+from app.modules.teams.blocks import end_team_ties
 
 # A generous allowance: reporting is rare, but a moderation incident can need several reports
 # in a short window, and the pair-level unique index already stops queue flooding by itself.
@@ -60,6 +61,7 @@ class TrustService:
                 .where(ConversationMember.conversation_id.in_(conversations))
                 .values(active=False)
             )
+        await end_team_ties(self.db, blocker_id, target_id)
         await self.db.commit()
 
     async def unblock(self, blocker_id: uuid.UUID, target_id: uuid.UUID) -> None:
