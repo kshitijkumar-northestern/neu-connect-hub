@@ -4,6 +4,15 @@ updates:
     directory: /apps/web
     schedule:
       interval: weekly
+    # Held at their current majors until the lint plugins support the next ones:
+    # eslint-plugin-jsx-a11y peers on ESLint up to 9, and typescript-eslint on TypeScript < 6.1.
+    ignore:
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@eslint/js"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
     groups:
       web-development:
         dependency-type: development
