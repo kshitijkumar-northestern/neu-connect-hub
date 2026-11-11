@@ -133,3 +133,46 @@ def test_secrets_are_hidden_from_repr() -> None:
 
     assert PRODUCTION_SECRET not in repr(settings)
     assert PRODUCTION_SECRET not in str(settings.model_dump())
+
+
+@pytest.mark.parametrize("value", [59, 3601])
+def test_turn_credential_ttl_seconds_bounds_are_refused(value: int) -> None:
+    with pytest.raises(ValidationError, match="TURN_CREDENTIAL_TTL_SECONDS"):
+        make_settings(turn_credential_ttl_seconds=value)
+
+
+@pytest.mark.parametrize("value", [60, 3600])
+def test_turn_credential_ttl_seconds_bounds_are_accepted(value: int) -> None:
+    assert make_settings(turn_credential_ttl_seconds=value).turn_credential_ttl_seconds == value
+
+
+@pytest.mark.parametrize("value", [1, 9])
+def test_room_capacity_bounds_are_refused(value: int) -> None:
+    with pytest.raises(ValidationError, match="ROOM_CAPACITY"):
+        make_settings(room_capacity=value)
+
+
+@pytest.mark.parametrize("value", [2, 8])
+def test_room_capacity_bounds_are_accepted(value: int) -> None:
+    assert make_settings(room_capacity=value).room_capacity == value
+
+
+def test_production_refuses_turn_urls_without_a_strong_turn_secret() -> None:
+    with pytest.raises(ValidationError, match="TURN_SECRET"):
+        production_settings(turn_urls="turn:turn.example:3478", turn_secret="too-short")
+
+
+def test_production_refuses_turn_urls_with_the_placeholder_turn_secret() -> None:
+    with pytest.raises(ValidationError, match="TURN_SECRET"):
+        production_settings(turn_urls="turn:turn.example:3478", turn_secret="replace_if_needed")
+
+
+def test_production_allows_turn_urls_with_a_strong_turn_secret() -> None:
+    settings = production_settings(
+        turn_urls="turn:turn.example:3478", turn_secret=PRODUCTION_SECRET
+    )
+    assert settings.turn_url_list == ["turn:turn.example:3478"]
+
+
+def test_production_allows_no_turn_urls_with_no_turn_secret() -> None:
+    assert production_settings().turn_url_list == []

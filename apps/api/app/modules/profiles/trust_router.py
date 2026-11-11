@@ -19,10 +19,14 @@ def trust_service(request: Request, db: AsyncSession = Depends(get_session)) -> 
 @router.post("/blocks", status_code=204)
 async def create_block(
     body: BlockRequest,
+    request: Request,
     current: CurrentSession = Depends(require_verified),
     service: TrustService = Depends(trust_service),
 ) -> Response:
     await service.block(current.user.id, body.user_id)
+    # Blocking is also how a student is removed from a team, so this covers both: without it,
+    # a call in progress would keep flowing until (if ever) the next signal.
+    await request.app.state.room_access([current.user.id, body.user_id])
     return Response(status_code=204)
 
 

@@ -26,13 +26,89 @@ export interface PresenceEvent {
   online: boolean;
 }
 
+/** Another student in a call. Peers are addressed by `user_id` (one socket per student per room). */
+export interface Peer {
+  user_id: string;
+  display_name: string | null;
+}
+
+/** Codes a room event's ack can carry (apps/api's realtime rooms module), plus a client-only
+ * "timeout" for when no ack arrives at all. */
+export type RoomErrorCode =
+  | "not_found"
+  | "room_ended"
+  | "room_full"
+  | "not_in_room"
+  | "peer_not_found"
+  | "validation_error"
+  | "rate_limited"
+  | "unauthorized"
+  | "internal_error"
+  | "timeout";
+
+export type RoomError = { ok: false; error: { code: RoomErrorCode; message: string } };
+
+/** WebRTC negotiation relayed by the server, untouched, between two students in the same room. */
+export type RtcSignal =
+  | { type: "offer" | "answer"; sdp: string }
+  | {
+      type: "candidate";
+      candidate: { candidate: string; sdpMid: string | null; sdpMLineIndex: number | null; usernameFragment?: string | null };
+    };
+
+export interface RoomPayload {
+  room_id: string;
+}
+
+/** On success, `peers` are the students already in the room: the joiner sends each an offer. */
+export type RoomJoinAck = { ok: true; room_id: string; peers: Peer[] } | RoomError;
+export type RoomAck = { ok: true } | RoomError;
+
+export interface RtcSignalPayload {
+  room_id: string;
+  /** The receiving peer's user_id. */
+  to: string;
+  signal: RtcSignal;
+}
+
+export interface PeerJoinedEvent {
+  room_id: string;
+  peer: Peer;
+}
+
+export interface PeerLeftEvent {
+  room_id: string;
+  user_id: string;
+}
+
+/** Sent to a student's socket when the server takes it out of a call: they lost access (a block,
+ * or a removal from the team), or they joined the same call from another tab, which takes over. */
+export interface RoomRemovedEvent {
+  room_id: string;
+  reason: "access_lost" | "joined_elsewhere";
+}
+
+export interface RtcSignalEvent {
+  room_id: string;
+  /** The sending peer's user_id. */
+  from: string;
+  signal: RtcSignal;
+}
+
 interface ServerToClientEvents {
   "chat.message": (message: Message) => void;
   "presence.changed": (event: PresenceEvent) => void;
+  "room.peer_joined": (event: PeerJoinedEvent) => void;
+  "room.peer_left": (event: PeerLeftEvent) => void;
+  "room.removed": (event: RoomRemovedEvent) => void;
+  "rtc.signal": (event: RtcSignalEvent) => void;
 }
 
 interface ClientToServerEvents {
   "chat.send": (payload: ChatSendPayload, ack: (response: ChatSendAck) => void) => void;
+  "room.join": (payload: RoomPayload, ack: (response: RoomJoinAck) => void) => void;
+  "room.leave": (payload: RoomPayload, ack: (response: RoomAck) => void) => void;
+  "rtc.signal": (payload: RtcSignalPayload, ack: (response: RoomAck) => void) => void;
 }
 
 export type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
@@ -69,4 +145,39 @@ export function emitChatSend(socket: AppSocket, payload: ChatSendPayload): Promi
       resolve(response);
     });
   });
+}
+
+/** Room events wait this long for an ack before resolving with a "timeout" error. */
+export const ROOM_ACK_TIMEOUT_MS = 10_000;
+
+const ROOM_TIMEOUT: RoomError = { ok: false, error: { code: "timeout", message: "The server didn't respond in time." } };
+
+/** Resolves with the server's ack, or with `fallback` once `timeoutMs` passes without one. */
+function ackOrTimeout<T>(register: (done: (response: T) => void) => void, fallback: T, timeoutMs: number): Promise<T> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve(fallback);
+    }, timeoutMs);
+    register((response) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(response);
+    });
+  });
+}
+
+export function emitRoomJoin(socket: AppSocket, payload: RoomPayload): Promise<RoomJoinAck> {
+  return ackOrTimeout<RoomJoinAck>((done) => socket.emit("room.join", payload, done), ROOM_TIMEOUT, ROOM_ACK_TIMEOUT_MS);
+}
+
+export function emitRoomLeave(socket: AppSocket, payload: RoomPayload): Promise<RoomAck> {
+  return ackOrTimeout<RoomAck>((done) => socket.emit("room.leave", payload, done), ROOM_TIMEOUT, ROOM_ACK_TIMEOUT_MS);
+}
+
+export function emitRtcSignal(socket: AppSocket, payload: RtcSignalPayload): Promise<RoomAck> {
+  return ackOrTimeout<RoomAck>((done) => socket.emit("rtc.signal", payload, done), ROOM_TIMEOUT, ROOM_ACK_TIMEOUT_MS);
 }

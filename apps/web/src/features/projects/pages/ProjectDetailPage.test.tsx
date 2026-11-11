@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -250,6 +250,86 @@ describe("ProjectDetailPage", () => {
       await user.click(await screen.findByRole("button", { name: "Apply" }));
 
       expect(await screen.findByText("This team is full.")).toBeInTheDocument();
+    });
+  });
+
+  describe("starting a team call", () => {
+    it("offers no Team call when there's no conversation yet", async () => {
+      fakeApi({ "GET /me": [200, ADA], "GET /projects/project-1": [200, baseProject({ conversation_id: null })] });
+      renderApp("/projects/project-1");
+
+      await screen.findByRole("link", { name: "Edit project" });
+      expect(screen.queryByRole("button", { name: "Team call" })).not.toBeInTheDocument();
+    });
+
+    it("starts a team call and navigates to the room, for the owner", async () => {
+      const user = userEvent.setup();
+      const api = fakeApi({
+        "GET /me": [200, ADA],
+        "GET /projects/project-1": [200, baseProject({ conversation_id: "conv-1" })],
+        "POST /rooms": [201, { id: "room-1" }],
+      });
+      const { router } = renderApp("/projects/project-1");
+
+      await user.click(await screen.findByRole("button", { name: "Team call" }));
+
+      await waitFor(() => expect(router.state.location.pathname).toBe("/rooms/room-1"));
+      expect(api.callsTo("POST /rooms")[0]?.body).toEqual({ conversation_id: "conv-1" });
+    });
+
+    it("starts a team call and navigates to the room, for a member", async () => {
+      const user = userEvent.setup();
+      const api = fakeApi({
+        "GET /me": [200, { ...ADA, id: MEMBER_ID }],
+        "GET /projects/project-1": [200, baseProject({ conversation_id: "conv-1" })],
+        "POST /rooms": [201, { id: "room-2" }],
+      });
+      const { router } = renderApp("/projects/project-1");
+
+      await user.click(await screen.findByRole("button", { name: "Team call" }));
+
+      await waitFor(() => expect(router.state.location.pathname).toBe("/rooms/room-2"));
+      expect(api.callsTo("POST /rooms")[0]?.body).toEqual({ conversation_id: "conv-1" });
+    });
+
+    it("disables Team call while starting, and shows the error without navigating on failure", async () => {
+      const user = userEvent.setup();
+      let resolveStart!: () => void;
+      const { router } = (() => {
+        fakeApi({
+          "GET /me": [200, ADA],
+          "GET /projects/project-1": [200, baseProject({ conversation_id: "conv-1" })],
+          "POST /rooms": () =>
+            new Promise((resolve) => {
+              resolveStart = () => resolve(apiError(429, "rate_limited"));
+            }),
+        });
+        return renderApp("/projects/project-1");
+      })();
+
+      const button = await screen.findByRole("button", { name: "Team call" });
+      await user.click(button);
+
+      expect(button).toBeDisabled();
+      act(() => resolveStart());
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("Too many attempts. Wait a moment and try again.");
+      expect(screen.getByRole("button", { name: "Team call" })).toBeEnabled();
+      expect(router.state.location.pathname).toBe("/projects/project-1");
+    });
+
+    it("shows the room's own copy for a 404 (e.g. after a team removal), not the account one", async () => {
+      const user = userEvent.setup();
+      fakeApi({
+        "GET /me": [200, ADA],
+        "GET /projects/project-1": [200, baseProject({ conversation_id: "conv-1" })],
+        "POST /rooms": apiError(404, "not_found"),
+      });
+      renderApp("/projects/project-1");
+
+      await user.click(await screen.findByRole("button", { name: "Team call" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("This call isn't available.");
     });
   });
 });

@@ -349,4 +349,82 @@ describe("ThreadPage", () => {
     expect(screen.getByText(/^A student ·/)).toBeInTheDocument();
     expect(screen.getByText(/^You ·/)).toBeInTheDocument();
   });
+
+  describe("starting a call", () => {
+    it("starts a call and navigates to the room, for a direct thread", async () => {
+      const user = userEvent.setup();
+      const api = fakeApi({
+        "GET /me": [200, ADA],
+        "GET /conversations/conv-1": [200, CONVERSATION],
+        [`GET /conversations/${CONVERSATION_ID}/messages`]: messagesRoute({ messages: [], before: null, after: null }),
+        "POST /rooms": [201, { id: "room-1" }],
+      });
+      const { router } = renderApp(`/messages/${CONVERSATION_ID}`);
+      await screen.findByRole("log");
+
+      await user.click(screen.getByRole("button", { name: "Call" }));
+
+      await waitFor(() => expect(router.state.location.pathname).toBe("/rooms/room-1"));
+      expect(api.callsTo("POST /rooms")[0]?.body).toEqual({ conversation_id: CONVERSATION_ID });
+    });
+
+    it("starts a call and navigates to the room, for a project thread", async () => {
+      const user = userEvent.setup();
+      const api = fakeApi({
+        "GET /me": [200, ADA],
+        [`GET /conversations/${TEAM_CONVERSATION_ID}`]: [200, TEAM_CONVERSATION],
+        [`GET /conversations/${TEAM_CONVERSATION_ID}/messages`]: messagesRoute({ messages: [], before: null, after: null }),
+        "POST /rooms": [201, { id: "room-2" }],
+      });
+      const { router } = renderApp(`/messages/${TEAM_CONVERSATION_ID}`);
+      await screen.findByRole("log");
+
+      await user.click(screen.getByRole("button", { name: "Call" }));
+
+      await waitFor(() => expect(router.state.location.pathname).toBe("/rooms/room-2"));
+      expect(api.callsTo("POST /rooms")[0]?.body).toEqual({ conversation_id: TEAM_CONVERSATION_ID });
+    });
+
+    it("disables the Call button while starting, and shows the error without navigating on failure", async () => {
+      const user = userEvent.setup();
+      let resolveStart!: () => void;
+      fakeApi({
+        "GET /me": [200, ADA],
+        "GET /conversations/conv-1": [200, CONVERSATION],
+        [`GET /conversations/${CONVERSATION_ID}/messages`]: messagesRoute({ messages: [], before: null, after: null }),
+        "POST /rooms": () =>
+          new Promise((resolve) => {
+            resolveStart = () => resolve(apiError(429, "rate_limited"));
+          }),
+      });
+      const { router } = renderApp(`/messages/${CONVERSATION_ID}`);
+      await screen.findByRole("log");
+
+      const button = screen.getByRole("button", { name: "Call" });
+      await user.click(button);
+
+      expect(button).toBeDisabled();
+      act(() => resolveStart());
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("Too many attempts. Wait a moment and try again.");
+      expect(screen.getByRole("button", { name: "Call" })).toBeEnabled();
+      expect(router.state.location.pathname).toBe(`/messages/${CONVERSATION_ID}`);
+    });
+
+    it("shows the room's own copy for a 404 (e.g. after a block), not the account one", async () => {
+      const user = userEvent.setup();
+      fakeApi({
+        "GET /me": [200, ADA],
+        "GET /conversations/conv-1": [200, CONVERSATION],
+        [`GET /conversations/${CONVERSATION_ID}/messages`]: messagesRoute({ messages: [], before: null, after: null }),
+        "POST /rooms": apiError(404, "not_found"),
+      });
+      renderApp(`/messages/${CONVERSATION_ID}`);
+      await screen.findByRole("log");
+
+      await user.click(screen.getByRole("button", { name: "Call" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("This call isn't available.");
+    });
+  });
 });

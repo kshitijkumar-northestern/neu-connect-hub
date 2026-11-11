@@ -34,6 +34,8 @@ const MESSAGES = new Map<string, string>([
   ["invalid_status", "A project can only be set to open or closed."],
   ["role_open_slots_too_low", "A role can't have fewer places than the students already in it."],
   ["cannot_remove_role_in_use", "A role with members or pending applications can't be removed."],
+  // Codes from apps/api/app/modules/rooms/service.py.
+  ["room_ended", "This call has ended."],
 ]);
 
 const FALLBACK = "Something went wrong. Please try again.";
