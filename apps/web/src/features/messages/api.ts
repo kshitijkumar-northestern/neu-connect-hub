@@ -1,11 +1,13 @@
 import { apiFetch } from "@/lib/http";
 
-/** Mirrors MessageResponse in apps/api/app/modules/messages/schemas.py. `removed: true` means
- * the author deleted their account: `body` and `author_id` are null. */
+/** Mirrors MessageOut in apps/api/app/modules/chat/schemas.py. `removed: true` means the author
+ * deleted their account: `body` and `author_id` are null. `author_name` is the author's current
+ * profile display name; it's null when the message is removed or the author has no profile. */
 export interface Message {
   id: string;
   conversation_id: string;
   author_id: string | null;
+  author_name: string | null;
   body: string | null;
   client_msg_id: string | null;
   created_at: string;
@@ -19,12 +21,18 @@ export interface ConversationParticipant {
   online: boolean;
 }
 
-/** Mirrors ConversationResponse in apps/api/app/modules/messages/schemas.py. Only conversations
- * the student is an active member of are ever returned; a block makes one disappear. */
+/** Mirrors ConversationOut in apps/api/app/modules/chat/schemas.py. Only conversations the student
+ * is an active member of are ever returned; a block makes a direct one disappear.
+ *
+ * Project conversations (`kind: "project"`): `name` is the project title, `project_id` is set and
+ * `other` is null (the team can be any size). Direct conversations: `name` and `project_id` are
+ * null and `other` is the other student. */
 export interface Conversation {
   id: string;
-  kind: "direct";
-  other: ConversationParticipant;
+  kind: "direct" | "project";
+  name: string | null;
+  project_id: string | null;
+  other: ConversationParticipant | null;
   last_message: Message | null;
   updated_at: string;
 }

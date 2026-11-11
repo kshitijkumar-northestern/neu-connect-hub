@@ -15,6 +15,7 @@ describe("profile navigation", () => {
     const menu = await screen.findByRole("menu");
     expect(within(menu).getByRole("menuitem", { name: "Your profile" })).toHaveAttribute("href", "/profile");
     expect(within(menu).getByRole("menuitem", { name: "Messages" })).toHaveAttribute("href", "/messages");
+    expect(within(menu).getByRole("menuitem", { name: "Projects" })).toHaveAttribute("href", "/projects");
     expect(within(menu).getByRole("menuitem", { name: "Connections" })).toHaveAttribute("href", "/connections");
     await user.click(within(menu).getByRole("menuitem", { name: "Settings" }));
 
@@ -31,6 +32,18 @@ describe("profile navigation", () => {
     await user.click(within(menu).getByRole("menuitem", { name: "Connections" }));
 
     expect(router.state.location.pathname).toBe("/connections");
+  });
+
+  it("links to projects from the account menu", async () => {
+    const user = userEvent.setup();
+    fakeApi({ "GET /me": [200, ADA], "GET /projects": [200, { items: [], next_offset: null }] });
+    const { router } = renderApp("/");
+
+    await user.click(await screen.findByRole("button", { name: `Account: ${ADA.email}` }));
+    const menu = await screen.findByRole("menu");
+    await user.click(within(menu).getByRole("menuitem", { name: "Projects" }));
+
+    expect(router.state.location.pathname).toBe("/projects");
   });
 
   it("asks unverified students to verify before they can edit a profile", async () => {

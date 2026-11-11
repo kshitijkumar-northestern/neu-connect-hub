@@ -41,8 +41,9 @@ function upsertMessages(list: ViewMessage[], incoming: Message[]): ViewMessage[]
   return incoming.reduce<ViewMessage[]>((acc, message) => upsertMessage(acc, { ...message }), list);
 }
 
-function authorLabel(message: Message, ownUserId: string | undefined, otherName: string): string {
-  return message.author_id === ownUserId && ownUserId !== undefined ? "You" : otherName;
+function authorLabel(message: Message, ownUserId: string | undefined, fallbackName: string): string {
+  if (ownUserId !== undefined && message.author_id === ownUserId) return "You";
+  return message.author_name ?? fallbackName;
 }
 
 /** Keyed by the route param so navigating straight from one thread to another remounts the inner
@@ -58,7 +59,7 @@ function Thread({ conversationId }: { conversationId: string | undefined }) {
   const { connected, send, onMessage, onPresence, onReconnect } = useSocket();
 
   const [load, setLoad] = useState<LoadState>("loading");
-  const [other, setOther] = useState<Conversation["other"]>();
+  const [conversation, setConversation] = useState<Conversation>();
   const [messages, setMessages] = useState<ViewMessage[]>([]);
   const [beforeCursor, setBeforeCursor] = useState<string | null>(null);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
@@ -96,8 +97,8 @@ function Thread({ conversationId }: { conversationId: string | undefined }) {
     // Best-effort: the header's name and presence. A failure here doesn't block the thread.
     messagesApi
       .conversation(conversationId)
-      .then((conversation) => {
-        if (!cancelled) setOther(conversation.other);
+      .then((result) => {
+        if (!cancelled) setConversation(result);
       })
       .catch(() => undefined);
     return () => {
@@ -108,8 +109,10 @@ function Thread({ conversationId }: { conversationId: string | undefined }) {
   useEffect(
     () =>
       onPresence((event) => {
-        setOther((current) =>
-          current && current.user_id === event.user_id ? { ...current, online: event.online } : current,
+        setConversation((current) =>
+          current && current.other && current.other.user_id === event.user_id
+            ? { ...current, other: { ...current.other, online: event.online } }
+            : current,
         );
       }),
     [onPresence],
@@ -204,6 +207,7 @@ function Thread({ conversationId }: { conversationId: string | undefined }) {
         id: clientMsgId,
         conversation_id: conversationId,
         author_id: ownUserId ?? null,
+        author_name: null,
         body: trimmed,
         client_msg_id: clientMsgId,
         created_at: new Date().toISOString(),
@@ -254,21 +258,32 @@ function Thread({ conversationId }: { conversationId: string | undefined }) {
     return <p role="alert">Can't load this conversation right now. Check your connection and try again.</p>;
   }
 
-  const otherName = other?.display_name ?? "A student";
+  const isProject = conversation?.kind === "project";
+  const otherName = conversation?.other?.display_name ?? "A student";
+  // Multi-author project chats fall back to "A student" per message; a direct thread falls back
+  // to the one other student whose name the header already shows.
+  const fallbackAuthorName = isProject ? "A student" : otherName;
   const trimmedDraft = draft.trim();
 
   return (
     <section className="flex h-[calc(100svh-14rem)] min-h-[28rem] flex-col gap-4">
       <header className="flex flex-col gap-1 border-b pb-3">
         <div className="flex items-center justify-between gap-3">
-          {other ? (
-            <Link to={`/people/${other.user_id}`} className="font-medium underline-offset-4 hover:underline">
+          {isProject ? (
+            <Link
+              to={`/projects/${conversation.project_id}`}
+              className="font-medium underline-offset-4 hover:underline"
+            >
+              {conversation.name ?? "Team chat"}
+            </Link>
+          ) : conversation?.other ? (
+            <Link to={`/people/${conversation.other.user_id}`} className="font-medium underline-offset-4 hover:underline">
               {otherName}
             </Link>
           ) : (
             <span className="font-medium">{otherName}</span>
           )}
-          {other ? <PresenceIndicator online={other.online} /> : null}
+          {!isProject && conversation?.other ? <PresenceIndicator online={conversation.other.online} /> : null}
         </div>
         {!connected ? <p role="status" className="text-xs text-muted-foreground">Reconnecting…</p> : null}
       </header>
@@ -283,7 +298,7 @@ function Thread({ conversationId }: { conversationId: string | undefined }) {
         {messages.map((message) => (
           <div key={keyOf(message)} className="flex flex-col gap-0.5">
             <p className="text-xs text-muted-foreground">
-              {authorLabel(message, ownUserId, otherName)} · {clockTime(message.created_at)}
+              {authorLabel(message, ownUserId, fallbackAuthorName)} · {clockTime(message.created_at)}
             </p>
             <p className={message.removed ? "text-muted-foreground italic" : "whitespace-pre-wrap break-words"}>
               {message.removed ? "Message removed" : message.body}

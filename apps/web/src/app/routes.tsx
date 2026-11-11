@@ -18,6 +18,12 @@ import { ThreadPage } from "@/features/messages/pages/ThreadPage";
 import { ProfilePage } from "@/features/profiles/pages/ProfilePage";
 import { PublicProfilePage } from "@/features/profiles/pages/PublicProfilePage";
 import { SettingsPage } from "@/features/profiles/pages/SettingsPage";
+import { EditProjectPage } from "@/features/projects/pages/EditProjectPage";
+import { MyApplicationsPage } from "@/features/projects/pages/MyApplicationsPage";
+import { NewProjectPage } from "@/features/projects/pages/NewProjectPage";
+import { ProjectApplicationsPage } from "@/features/projects/pages/ProjectApplicationsPage";
+import { ProjectDetailPage } from "@/features/projects/pages/ProjectDetailPage";
+import { ProjectsPage } from "@/features/projects/pages/ProjectsPage";
 
 export const routes: RouteObject[] = [
   {
@@ -71,6 +77,29 @@ export const routes: RouteObject[] = [
           { index: true, element: <ConversationsPage /> },
           { path: ":conversationId", element: <ThreadPage /> },
         ],
+      },
+      {
+        path: "projects",
+        element: (
+          <RequireVerified>
+            <Outlet />
+          </RequireVerified>
+        ),
+        children: [
+          { index: true, element: <ProjectsPage /> },
+          { path: "new", element: <NewProjectPage /> },
+          { path: ":projectId", element: <ProjectDetailPage /> },
+          { path: ":projectId/edit", element: <EditProjectPage /> },
+          { path: ":projectId/applications", element: <ProjectApplicationsPage /> },
+        ],
+      },
+      {
+        path: "applications",
+        element: (
+          <RequireVerified>
+            <MyApplicationsPage />
+          </RequireVerified>
+        ),
       },
       {
         path: "settings",

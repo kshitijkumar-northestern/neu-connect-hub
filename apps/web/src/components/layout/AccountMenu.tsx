@@ -1,5 +1,6 @@
 import {
   BubbleChatIcon,
+  KanbanIcon,
   Logout03Icon,
   Settings02Icon,
   UserIcon,
@@ -56,6 +57,12 @@ export function AccountMenu() {
           <Link to="/messages">
             <HugeiconsIcon icon={BubbleChatIcon} aria-hidden="true" />
             Messages
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link to="/projects">
+            <HugeiconsIcon icon={KanbanIcon} aria-hidden="true" />
+            Projects
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
