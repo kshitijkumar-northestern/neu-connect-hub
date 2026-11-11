@@ -1,3 +1,4 @@
+import logging
 from http.cookies import CookieError, SimpleCookie
 from typing import Any
 
@@ -8,9 +9,13 @@ from app.core.rate_limit import RateLimiter
 from app.core.security import SESSION_COOKIE
 from app.db.session import Database
 from app.modules.auth.sessions import load_session
+from app.realtime.calls import CallRegistry
 from app.realtime.chat import register_chat
 from app.realtime.presence import Presence
+from app.realtime.room_events import RoomHooks, register_rooms
 from app.realtime.rooms import session_room, user_room
+
+logger = logging.getLogger("app.realtime")
 
 
 def _session_cookie(cookie_header: str) -> str | None:
@@ -28,9 +33,14 @@ async def disconnect_room(sio: socketio.AsyncServer, room: str) -> None:
 
 
 def create_socketio_server(
-    settings: Settings, database: Database, limiter: RateLimiter, presence: Presence
-) -> socketio.AsyncServer:
-    """Socket.IO server that accepts only signed-in browsers from the web origin."""
+    settings: Settings,
+    database: Database,
+    limiter: RateLimiter,
+    presence: Presence,
+    calls: CallRegistry,
+) -> tuple[socketio.AsyncServer, RoomHooks]:
+    """Socket.IO server that accepts only signed-in browsers from the web origin. Also returns
+    the rooms hooks, so the caller can expose `recheck_room_access` on the HTTP app state."""
     sio = socketio.AsyncServer(
         async_mode="asgi",
         cors_allowed_origins=[settings.web_origin],
@@ -54,12 +64,20 @@ def create_socketio_server(
         await hooks.joined(current.user.id)
 
     async def disconnect(sid: str, reason: object = None) -> None:
-        await hooks.left(sid)
+        # Chat presence must always run, even if leaving a call fails (e.g. a database error):
+        # it must never leak a now-disconnected student as still online.
+        try:
+            await rooms_hooks.left(sid)
+        except Exception:
+            logger.exception("Leaving a call failed on disconnect")
+        finally:
+            await hooks.left(sid)
 
     hooks = register_chat(sio, settings, database, limiter, presence)
+    rooms_hooks = register_rooms(sio, settings, database, limiter, calls)
     sio.on("connect", connect)
     sio.on("disconnect", disconnect)
-    return sio
+    return sio, rooms_hooks
 
 
 __all__ = ["create_socketio_server", "disconnect_room", "session_room", "user_room"]

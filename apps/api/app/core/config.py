@@ -13,6 +13,8 @@ ENV_FILE = API_ROOT / ".env"
 # Values shipped in apps/api/.env.example. They are fine locally and refused in production.
 PLACEHOLDER_SECRETS = frozenset({"replace_with_random_local_secret", "replace_if_needed"})
 MIN_PRODUCTION_SECRET_LENGTH = 32
+MAX_TURN_CREDENTIAL_TTL_SECONDS = 3600
+MAX_ROOM_CAPACITY = 8
 _DEFAULT_PORTS = {"http": 80, "https": 443}
 _ORIGIN_ERROR = "WEB_ORIGIN must be a bare origin such as https://hub.example"
 
@@ -54,6 +56,15 @@ class Settings(BaseSettings):
     # so the web app can read the CSRF cookie. Empty means host-only cookies.
     cookie_domain: str | None = None
 
+    # Calls. The browser mesh doesn't scale past a handful of people, so rooms are capped. STUN and
+    # TURN URLs are comma-separated (e.g. "turn:turn.hub.example:3478?transport=udp"); TURN uses the
+    # coturn REST-API scheme, where TURN_SECRET signs short-lived credentials (at most an hour).
+    room_capacity: int = 4
+    stun_urls: str = ""
+    turn_urls: str = ""
+    turn_secret: SecretStr | None = None
+    turn_credential_ttl_seconds: int = 3600
+
     # Argon2id cost. The defaults match argon2-cffi's RFC 9106 low-memory profile; tests lower them.
     argon2_time_cost: int = 3
     argon2_memory_cost_kib: int = 65536
@@ -72,6 +83,14 @@ class Settings(BaseSettings):
         )
 
     @property
+    def stun_url_list(self) -> list[str]:
+        return [url.strip() for url in self.stun_urls.split(",") if url.strip()]
+
+    @property
+    def turn_url_list(self) -> list[str]:
+        return [url.strip() for url in self.turn_urls.split(",") if url.strip()]
+
+    @property
     def cookie_secure(self) -> bool:
         """Secure cookies whenever the site is served over https (always, in production)."""
         return self.web_origin.startswith("https://")
@@ -81,6 +100,22 @@ class Settings(BaseSettings):
     def _asyncpg_driver(cls, value: str) -> str:
         if not value.startswith("postgresql+asyncpg://"):
             raise ValueError("DATABASE_URL must start with postgresql+asyncpg://")
+        return value
+
+    @field_validator("turn_credential_ttl_seconds")
+    @classmethod
+    def _short_lived_turn(cls, value: int) -> int:
+        if not 60 <= value <= MAX_TURN_CREDENTIAL_TTL_SECONDS:
+            raise ValueError(
+                f"TURN_CREDENTIAL_TTL_SECONDS must be 60-{MAX_TURN_CREDENTIAL_TTL_SECONDS}"
+            )
+        return value
+
+    @field_validator("room_capacity")
+    @classmethod
+    def _small_rooms(cls, value: int) -> int:
+        if not 2 <= value <= MAX_ROOM_CAPACITY:
+            raise ValueError(f"ROOM_CAPACITY must be 2-{MAX_ROOM_CAPACITY}")
         return value
 
     @field_validator("web_origin")
@@ -127,6 +162,16 @@ class Settings(BaseSettings):
             raise ValueError("WEB_ORIGIN must use https in production")
         if self.mail_backend != "smtp" or not self.smtp_host:
             raise ValueError("MAIL_BACKEND must be smtp with SMTP_HOST set in production")
+        if self.turn_url_list:
+            turn_secret = self.turn_secret.get_secret_value() if self.turn_secret else ""
+            if (
+                turn_secret in PLACEHOLDER_SECRETS
+                or len(turn_secret) < MIN_PRODUCTION_SECRET_LENGTH
+            ):
+                raise ValueError(
+                    f"TURN_SECRET must be a random value of at least "
+                    f"{MIN_PRODUCTION_SECRET_LENGTH} characters when TURN_URLS is set in production"
+                )
         if not self.allowed_domains:
             raise ValueError(
                 "ALLOWED_EMAIL_DOMAINS must list at least one campus domain in production"

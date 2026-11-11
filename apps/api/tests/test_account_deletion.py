@@ -67,6 +67,8 @@ async def test_the_reference_scan_covers_every_account_table() -> None:
         "projects",
         "project_members",
         "applications",
+        "rooms",
+        "room_members",
     } <= tables
 
 
@@ -301,4 +303,57 @@ async def test_deleting_a_member_keeps_the_project_and_the_others_messages(
             aid=ada_id,
         )
         == "owner's message"
+    )
+
+
+async def test_deleting_a_rooms_creator_keeps_the_call_going_for_the_others(
+    app: object, mailer: MemoryMailer, clean_database: AsyncEngine
+) -> None:
+    """The call belongs to the conversation, not to whoever happened to start it: deleting the
+    starter's account must not drop the room or anyone else's attendance out from under them."""
+    ada = await student(app, mailer, ADA)
+    grace = await student(app, mailer, GRACE)
+    await ada.put("/api/v1/me/profile", json=PROFILE)
+    await grace.put("/api/v1/me/profile", json={**PROFILE, "display_name": "Grace Hopper"})
+    ada_id, grace_id = await user_id(ada), await user_id(grace)
+
+    sent = (await ada.post("/api/v1/connections", json={"user_id": grace_id})).json()
+    accepted = (await grace.post(f"/api/v1/connections/{sent['id']}/accept")).json()
+    conversation_id = accepted["conversation_id"]
+    room = (await ada.post("/api/v1/rooms", json={"conversation_id": conversation_id})).json()
+    # Grace's attendance: a room_members row the way joining the call would leave one.
+    await execute(
+        clean_database,
+        "INSERT INTO room_members (id, room_id, user_id) VALUES (:id, :room_id, :user_id)",
+        id=str(uuid.uuid4()),
+        room_id=room["id"],
+        user_id=grace_id,
+    )
+
+    response = await delete_account(ada)
+    assert response.status_code == 204
+
+    assert (
+        await scalar(clean_database, "SELECT count(*) FROM rooms WHERE id = :id", id=room["id"])
+        == 1
+    )
+    assert (
+        await scalar(clean_database, "SELECT created_by FROM rooms WHERE id = :id", id=room["id"])
+        is None
+    )
+    assert (
+        await scalar(
+            clean_database,
+            "SELECT count(*) FROM room_members WHERE room_id = :id AND user_id = :uid",
+            id=room["id"],
+            uid=grace_id,
+        )
+        == 1
+    )
+    # Grace, still an active member of the conversation, can still see the call.
+    assert (await grace.get(f"/api/v1/rooms/{room['id']}")).status_code == 200
+    # No row anywhere still points at the deleted account.
+    assert (
+        await scalar(clean_database, "SELECT count(*) FROM rooms WHERE created_by = :id", id=ada_id)
+        == 0
     )

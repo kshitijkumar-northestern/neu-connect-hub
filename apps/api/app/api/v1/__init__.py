@@ -9,6 +9,7 @@ from app.modules.chat.router import router as chat_router
 from app.modules.connections.router import router as connections_router
 from app.modules.profiles.router import router as profiles_router
 from app.modules.profiles.trust_router import router as trust_router
+from app.modules.rooms.router import router as rooms_router
 from app.modules.teams.router import router as teams_router
 
 # Every unsafe request under /api/v1 must come from the web origin (CSRF defence).
@@ -20,3 +21,4 @@ router.include_router(trust_router)
 router.include_router(connections_router)
 router.include_router(chat_router)
 router.include_router(teams_router)
+router.include_router(rooms_router)
