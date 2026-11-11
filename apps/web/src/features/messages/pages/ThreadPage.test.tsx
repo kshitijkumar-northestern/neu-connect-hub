@@ -10,11 +10,26 @@ vi.mock("@/lib/socket", async () => (await import("@/test/fake-socket")).fakeSoc
 
 const OTHER_ID = "22222222-2222-4222-8222-222222222222";
 const CONVERSATION_ID = "conv-1";
+const PROJECT_ID = "44444444-4444-4444-8444-444444444444";
+const TEAM_CONVERSATION_ID = "conv-team";
+const TEAMMATE_ID = "33333333-3333-4333-8333-333333333333";
 
 const CONVERSATION = {
   id: CONVERSATION_ID,
   kind: "direct",
+  name: null,
+  project_id: null,
   other: { user_id: OTHER_ID, display_name: "Grace Hopper", online: true },
+  last_message: null,
+  updated_at: "2026-11-05T00:00:00Z",
+};
+
+const TEAM_CONVERSATION = {
+  id: TEAM_CONVERSATION_ID,
+  kind: "project",
+  name: "Campus Tutor Finder",
+  project_id: PROJECT_ID,
+  other: null,
   last_message: null,
   updated_at: "2026-11-05T00:00:00Z",
 };
@@ -23,6 +38,7 @@ const MSG_MINE = {
   id: "m1",
   conversation_id: CONVERSATION_ID,
   author_id: ADA.id,
+  author_name: "Ada Lovelace",
   body: "Hi!",
   client_msg_id: null,
   created_at: "2026-11-05T00:00:00Z",
@@ -33,6 +49,7 @@ const MSG_THEIRS = {
   id: "m2",
   conversation_id: CONVERSATION_ID,
   author_id: OTHER_ID,
+  author_name: "Grace Hopper",
   body: "Hello back",
   client_msg_id: null,
   created_at: "2026-11-05T00:01:00Z",
@@ -43,6 +60,7 @@ const MSG_REMOVED = {
   id: "m3",
   conversation_id: CONVERSATION_ID,
   author_id: null,
+  author_name: null,
   body: null,
   client_msg_id: null,
   created_at: "2026-11-05T00:02:00Z",
@@ -169,6 +187,7 @@ describe("ThreadPage", () => {
       id: "server-id-1",
       conversation_id: CONVERSATION_ID,
       author_id: ADA.id,
+      author_name: "Ada Lovelace",
       body: "New message",
       client_msg_id: payload?.client_msg_id ?? null,
       created_at: "2026-11-05T01:00:00Z",
@@ -263,5 +282,71 @@ describe("ThreadPage", () => {
     act(() => resolveSend(payload!.client_msg_id, { ok: false, error: { code: "unauthorized", message: "Nope." } }));
 
     await waitFor(() => expect(api.callsTo("GET /me").length).toBeGreaterThan(callsBefore));
+  });
+
+  it("shows a project conversation's header linking to its project, with no presence", async () => {
+    fakeApi({
+      "GET /me": [200, ADA],
+      [`GET /conversations/${TEAM_CONVERSATION_ID}`]: [200, TEAM_CONVERSATION],
+      [`GET /conversations/${TEAM_CONVERSATION_ID}/messages`]: messagesRoute({
+        messages: [],
+        before: null,
+        after: null,
+      }),
+    });
+    renderApp(`/messages/${TEAM_CONVERSATION_ID}`);
+
+    expect(await screen.findByRole("link", { name: "Campus Tutor Finder" })).toHaveAttribute(
+      "href",
+      `/projects/${PROJECT_ID}`,
+    );
+    expect(screen.queryByText("online")).not.toBeInTheDocument();
+  });
+
+  it("labels each project message by its own author, falling back to A student", async () => {
+    const TEAMMATE_MESSAGE = {
+      id: "tm1",
+      conversation_id: TEAM_CONVERSATION_ID,
+      author_id: TEAMMATE_ID,
+      author_name: "Katherine Johnson",
+      body: "Standup at 10?",
+      client_msg_id: null,
+      created_at: "2026-11-05T00:00:00Z",
+      removed: false,
+    };
+    const UNNAMED_MESSAGE = {
+      id: "tm2",
+      conversation_id: TEAM_CONVERSATION_ID,
+      author_id: "55555555-5555-4555-8555-555555555555",
+      author_name: null,
+      body: "Sounds good",
+      client_msg_id: null,
+      created_at: "2026-11-05T00:01:00Z",
+      removed: false,
+    };
+    const MY_MESSAGE = {
+      id: "tm3",
+      conversation_id: TEAM_CONVERSATION_ID,
+      author_id: ADA.id,
+      author_name: "Ada Lovelace",
+      body: "I'll start it",
+      client_msg_id: null,
+      created_at: "2026-11-05T00:02:00Z",
+      removed: false,
+    };
+    fakeApi({
+      "GET /me": [200, ADA],
+      [`GET /conversations/${TEAM_CONVERSATION_ID}`]: [200, TEAM_CONVERSATION],
+      [`GET /conversations/${TEAM_CONVERSATION_ID}/messages`]: messagesRoute({
+        messages: [TEAMMATE_MESSAGE, UNNAMED_MESSAGE, MY_MESSAGE],
+        before: null,
+        after: "cursor-1",
+      }),
+    });
+    renderApp(`/messages/${TEAM_CONVERSATION_ID}`);
+
+    expect(await screen.findByText(/^Katherine Johnson ·/)).toBeInTheDocument();
+    expect(screen.getByText(/^A student ·/)).toBeInTheDocument();
+    expect(screen.getByText(/^You ·/)).toBeInTheDocument();
   });
 });

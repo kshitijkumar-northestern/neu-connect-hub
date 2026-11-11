@@ -2,77 +2,27 @@ import asyncio
 import logging
 import uuid
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, field
 from typing import Any
 
-import httpx
 import pytest
-import socketio
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.core.rate_limit import Limit
-from app.core.security import SESSION_COOKIE
+from app.modules.chat import service as chat_service
 from app.realtime import chat as realtime_chat
-from tests.conftest import WEB_ORIGIN, MemoryMailer
-from tests.helpers import PROFILE, connect, execute, new_client, scalar, student, user_id
+from tests.conftest import MemoryMailer
+from tests.helpers import (
+    Student,
+    connect_pair,
+    eventually,
+    execute,
+    history,
+    make_student,
+    new_client,
+    scalar,
+)
 
 pytestmark = pytest.mark.usefixtures("clean_database")
-
-
-@dataclass
-class Student:
-    http: httpx.AsyncClient
-    id: str
-    base_url: str
-    events: list[tuple[str, Any]] = field(default_factory=list)
-    socket: socketio.AsyncClient | None = None
-
-    async def open_socket(self) -> socketio.AsyncClient:
-        sock = await connect(self.base_url, WEB_ORIGIN, self.http.cookies[SESSION_COOKIE])
-        for event in ("chat.message", "presence.changed"):
-            sock.on(event, lambda data, event=event: self.events.append((event, data)))
-        self.socket = sock
-        return sock
-
-    async def send(self, conversation_id: str, body: str, client_msg_id: str | None = None) -> Any:
-        assert self.socket is not None
-        payload = {
-            "conversation_id": conversation_id,
-            "client_msg_id": client_msg_id or str(uuid.uuid4()),
-            "body": body,
-        }
-        return await self.socket.call("chat.send", payload, timeout=5)
-
-    def received(self, event: str = "chat.message") -> list[Any]:
-        return [data for name, data in self.events if name == event]
-
-    async def close(self) -> None:
-        if self.socket is not None and self.socket.connected:
-            await self.socket.disconnect()
-        await self.http.aclose()
-
-
-async def make_student(base_url: str, mailer: MemoryMailer, name: str) -> Student:
-    http = await student(base_url, mailer, f"{name}@northeastern.edu")
-    response = await http.put("/api/v1/me/profile", json={**PROFILE, "display_name": name.title()})
-    assert response.status_code == 200, response.text
-    return Student(http=http, id=await user_id(http), base_url=base_url)
-
-
-async def connect_pair(a: Student, b: Student) -> str:
-    sent = (await a.http.post("/api/v1/connections", json={"user_id": b.id})).json()
-    accepted = (await b.http.post(f"/api/v1/connections/{sent['id']}/accept")).json()
-    return str(accepted["conversation_id"])
-
-
-async def eventually(predicate: Any, within: float = 5) -> None:
-    async with asyncio.timeout(within):
-        while not predicate():  # noqa: ASYNC110 - polling a list filled by socket callbacks
-            await asyncio.sleep(0.02)
-
-
-async def history(s: Student, conversation_id: str, **params: Any) -> httpx.Response:
-    return await s.http.get(f"/api/v1/conversations/{conversation_id}/messages", params=params)
 
 
 @pytest.fixture
@@ -282,7 +232,16 @@ async def test_a_deleted_accounts_messages_become_removed_for_the_others(
         (True, None, None),
         (True, None, None),
     ]
+    assert all(m["author_name"] is None for m in page["messages"])
     assert await scalar(clean_database, "SELECT count(*) FROM messages WHERE body IS NOT NULL") == 0
+
+    # Ada is gone but Grace is still a member: the conversation survives (messages stay
+    # readable), yet it's a direct conversation with nobody "other" left, so it drops out of
+    # the list and its own page 404s, the same as before a member ever went missing.
+    assert (await grace.http.get("/api/v1/conversations")).json() == []
+    assert (await grace.http.get(f"/api/v1/conversations/{conversation}")).status_code == 404
+    page_again = (await history(grace, conversation)).json()
+    assert len(page_again["messages"]) == 2
 
     # Once nobody is left, the conversation itself goes.
     gone = await grace.http.request(
@@ -340,6 +299,7 @@ async def test_the_conversation_list_shows_the_other_student_and_latest_message(
 
     [item] = (await grace.http.get("/api/v1/conversations")).json()
     assert item["id"] == conversation and item["kind"] == "direct"
+    assert (item["name"], item["project_id"]) == (None, None)
     assert (item["other"]["user_id"], item["other"]["display_name"], item["other"]["online"]) == (
         ada.id,
         "Ada",
@@ -348,6 +308,33 @@ async def test_the_conversation_list_shows_the_other_student_and_latest_message(
     assert item["last_message"]["body"] == "latest"
     assert (await eve.http.get("/api/v1/conversations")).json() == []
     assert "ada@northeastern.edu" not in str(item)
+
+
+async def test_the_conversation_list_keeps_the_most_recently_active_ones_under_the_cap(
+    live_server: str, mailer: MemoryMailer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(chat_service, "MAX_CONVERSATIONS", 2)
+    ada = await make_student(live_server, mailer, "ada")
+    bea = await make_student(live_server, mailer, "bea")
+    cleo = await make_student(live_server, mailer, "cleo")
+    dana = await make_student(live_server, mailer, "dana")
+    oldest = await connect_pair(ada, bea)
+    middle = await connect_pair(ada, cleo)
+    newest = await connect_pair(ada, dana)
+
+    try:
+        await ada.open_socket()
+        # The oldest-created conversation gets the newest message, so it must survive the cap
+        # even though it would otherwise be the first one Postgres drops.
+        await ada.send(oldest, "bumped back to the top")
+
+        ids = [item["id"] for item in (await ada.http.get("/api/v1/conversations")).json()]
+        assert len(ids) == 2
+        assert oldest in ids and newest in ids
+        assert middle not in ids
+    finally:
+        for s in (ada, bea, cleo, dana):
+            await s.close()
 
 
 async def test_one_conversation_can_be_read_by_its_members_only(
@@ -362,6 +349,7 @@ async def test_one_conversation_can_be_read_by_its_members_only(
         ada.id,
         None,
     )
+    assert (body["kind"], body["name"], body["project_id"]) == ("direct", None, None)
     for target in (conversation, str(uuid.uuid4())):
         assert (await eve.http.get(f"/api/v1/conversations/{target}")).status_code == 404
 

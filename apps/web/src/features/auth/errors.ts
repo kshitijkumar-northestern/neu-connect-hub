@@ -21,6 +21,19 @@ const MESSAGES = new Map<string, string>([
   // Codes from apps/api/app/modules/connections/service.py.
   ["connection_exists", "You already have a request or connection with this student."],
   ["connection_closed", "This request is no longer open."],
+  // Codes from apps/api/app/modules/teams/service.py.
+  ["unknown_role", "That role isn't part of this project anymore. Refresh the page and try again."],
+  ["cannot_apply_to_own_project", "You lead this project, so you can't apply to it."],
+  ["already_a_member", "You're already on this team."],
+  ["project_closed", "This project isn't taking new members."],
+  ["project_full", "This team is full."],
+  ["role_full", "That place was just filled."],
+  ["capacity_reached", "That place was just filled."],
+  ["application_not_pending", "This application has already been decided."],
+  ["capacity_too_low", "The team size can't be smaller than the team already is."],
+  ["invalid_status", "A project can only be set to open or closed."],
+  ["role_open_slots_too_low", "A role can't have fewer places than the students already in it."],
+  ["cannot_remove_role_in_use", "A role with members or pending applications can't be removed."],
 ]);
 
 const FALLBACK = "Something went wrong. Please try again.";

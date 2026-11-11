@@ -20,14 +20,23 @@ MESSAGE_MAX = 4000
 
 
 class Conversation(Base):
-    """A direct conversation is created when a connection is accepted; project ones come with
-    teams. Messages belong to a conversation."""
+    """A direct conversation is created when a connection is accepted; a project's team chat is
+    created with the project and goes with it. Messages belong to a conversation."""
 
     __tablename__ = "conversations"
-    __table_args__ = (CheckConstraint("kind IN ('direct', 'project')", name="kind_valid"),)
+    __table_args__ = (
+        CheckConstraint("kind IN ('direct', 'project')", name="kind_valid"),
+        CheckConstraint(
+            "(kind = 'project') = (project_id IS NOT NULL)", name="project_matches_kind"
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     kind: Mapped[str] = mapped_column(String(16))
+    # One team chat per project.
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), unique=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

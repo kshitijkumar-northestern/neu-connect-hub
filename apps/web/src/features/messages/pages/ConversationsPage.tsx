@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 
+import { Badge } from "@/components/ui/badge";
 import { useSocket } from "@/features/messages/SocketProvider";
 import { messagesApi, type Conversation, type Message } from "@/features/messages/api";
 import { PresenceIndicator } from "@/features/messages/components/PresenceIndicator";
@@ -19,14 +20,16 @@ function byNewestFirst(a: Conversation, b: Conversation): number {
 }
 
 function ConversationRow({ conversation }: { conversation: Conversation }) {
-  const name = conversation.other.display_name ?? "A student";
+  const isProject = conversation.kind === "project";
+  const name = isProject ? (conversation.name ?? "Team chat") : (conversation.other?.display_name ?? "A student");
   return (
     <li className="rounded-2xl border px-4 py-3">
       <Link to={`/messages/${conversation.id}`} className="flex flex-col gap-1">
         <span className="flex items-center justify-between gap-3">
           <span className="flex items-center gap-2 font-medium">
             {name}
-            <PresenceIndicator online={conversation.other.online} />
+            {isProject ? <Badge variant="secondary">Team</Badge> : null}
+            {!isProject && conversation.other ? <PresenceIndicator online={conversation.other.online} /> : null}
           </span>
           <span className="shrink-0 text-xs text-muted-foreground">{relativeTime(conversation.updated_at)}</span>
         </span>
@@ -81,7 +84,7 @@ export function ConversationsPage() {
       onPresence((event) => {
         setConversations((current) =>
           current.map((conversation) =>
-            conversation.other.user_id === event.user_id
+            conversation.other && conversation.other.user_id === event.user_id
               ? { ...conversation, other: { ...conversation.other, online: event.online } }
               : conversation,
           ),
@@ -113,10 +116,15 @@ export function ConversationsPage() {
         </ul>
       ) : (
         <p className="text-muted-foreground">
-          You can message a student once you're connected.{" "}
+          You can message a student once you're connected or on a project team.{" "}
           <Link className="underline underline-offset-4" to="/connections">
             Go to connections
+          </Link>{" "}
+          or{" "}
+          <Link className="underline underline-offset-4" to="/projects">
+            browse projects
           </Link>
+          .
         </p>
       )}
     </section>

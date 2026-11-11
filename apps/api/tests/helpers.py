@@ -1,5 +1,8 @@
 """Signing students up and in, shared by the API test modules."""
 
+import asyncio
+import uuid
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -108,6 +111,109 @@ PROFILE: dict[str, Any] = {
     "discoverable": True,
     "feedback_consent": False,
 }
+
+
+@dataclass
+class Student:
+    http: httpx.AsyncClient
+    id: str
+    base_url: str
+    events: list[tuple[str, Any]] = field(default_factory=list)
+    socket: socketio.AsyncClient | None = None
+
+    async def open_socket(self) -> socketio.AsyncClient:
+        sock = await connect(self.base_url, WEB_ORIGIN, self.http.cookies[SESSION_COOKIE])
+        for event in ("chat.message", "presence.changed"):
+            sock.on(event, lambda data, event=event: self.events.append((event, data)))
+        self.socket = sock
+        return sock
+
+    async def send(self, conversation_id: str, body: str, client_msg_id: str | None = None) -> Any:
+        assert self.socket is not None
+        payload = {
+            "conversation_id": conversation_id,
+            "client_msg_id": client_msg_id or str(uuid.uuid4()),
+            "body": body,
+        }
+        return await self.socket.call("chat.send", payload, timeout=5)
+
+    def received(self, event: str = "chat.message") -> list[Any]:
+        return [data for name, data in self.events if name == event]
+
+    async def close(self) -> None:
+        if self.socket is not None and self.socket.connected:
+            await self.socket.disconnect()
+        await self.http.aclose()
+
+
+async def make_student(base_url: str, mailer: MemoryMailer, name: str) -> Student:
+    http = await student(base_url, mailer, f"{name}@northeastern.edu")
+    response = await http.put("/api/v1/me/profile", json={**PROFILE, "display_name": name.title()})
+    assert response.status_code == 200, response.text
+    return Student(http=http, id=await user_id(http), base_url=base_url)
+
+
+async def connect_pair(a: Student, b: Student) -> str:
+    sent = (await a.http.post("/api/v1/connections", json={"user_id": b.id})).json()
+    accepted = (await b.http.post(f"/api/v1/connections/{sent['id']}/accept")).json()
+    return str(accepted["conversation_id"])
+
+
+async def eventually(predicate: Any, within: float = 5) -> None:
+    async with asyncio.timeout(within):
+        while not predicate():  # noqa: ASYNC110 - polling a list filled by socket callbacks
+            await asyncio.sleep(0.02)
+
+
+async def history(s: Student, conversation_id: str, **params: Any) -> httpx.Response:
+    return await s.http.get(f"/api/v1/conversations/{conversation_id}/messages", params=params)
+
+
+async def make_project_chat(
+    engine: AsyncEngine,
+    owner_id: str,
+    member_ids: list[str],
+    *,
+    title: str = "Team project",
+    capacity: int = 10,
+    status: str = "open",
+) -> tuple[str, str]:
+    """Creates a project, its team chat and memberships straight in the database, the way the
+    teams routes will once they exist. Returns (project_id, conversation_id)."""
+    project_id = str(uuid.uuid4())
+    conversation_id = str(uuid.uuid4())
+    await execute(
+        engine,
+        "INSERT INTO projects (id, owner_id, title, capacity, status) "
+        "VALUES (:id, :owner_id, :title, :capacity, :status)",
+        id=project_id,
+        owner_id=owner_id,
+        title=title,
+        capacity=capacity,
+        status=status,
+    )
+    await execute(
+        engine,
+        "INSERT INTO conversations (id, kind, project_id) VALUES (:id, 'project', :project_id)",
+        id=conversation_id,
+        project_id=project_id,
+    )
+    for user_id_, member_role in [(owner_id, "owner"), *((m, "member") for m in member_ids)]:
+        await execute(
+            engine,
+            "INSERT INTO project_members (project_id, user_id, member_role, role_id) "
+            "VALUES (:project_id, :user_id, :member_role, NULL)",
+            project_id=project_id,
+            user_id=user_id_,
+            member_role=member_role,
+        )
+        await execute(
+            engine,
+            "INSERT INTO conversation_members (conversation_id, user_id) VALUES (:cid, :uid)",
+            cid=conversation_id,
+            uid=user_id_,
+        )
+    return project_id, conversation_id
 
 
 async def connect(url: str, origin: str, session: str | None) -> socketio.AsyncClient:
