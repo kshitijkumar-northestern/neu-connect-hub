@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/features/auth/AuthProvider";
+import { FormError } from "@/features/auth/components/FormError";
 import { useSocket } from "@/features/messages/SocketProvider";
 import { PresenceIndicator } from "@/features/messages/components/PresenceIndicator";
 import { messagesApi, type Conversation, type Message } from "@/features/messages/api";
 import { chatSendErrorMessage } from "@/features/messages/errors";
 import { TextareaField } from "@/features/profiles/components/TextareaField";
 import { clockTime } from "@/features/messages/time";
+import { roomsApi } from "@/features/rooms/api";
+import { roomHttpErrorMessage } from "@/features/rooms/errors";
 import { ApiError } from "@/lib/http";
 import type { ChatSendErrorCode } from "@/lib/socket";
 
@@ -57,6 +60,7 @@ function Thread({ conversationId }: { conversationId: string | undefined }) {
   const { state, refresh } = useAuth();
   const ownUserId = state.status === "signed-in" ? state.user.id : undefined;
   const { connected, send, onMessage, onPresence, onReconnect } = useSocket();
+  const navigate = useNavigate();
 
   const [load, setLoad] = useState<LoadState>("loading");
   const [conversation, setConversation] = useState<Conversation>();
@@ -64,6 +68,8 @@ function Thread({ conversationId }: { conversationId: string | undefined }) {
   const [beforeCursor, setBeforeCursor] = useState<string | null>(null);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [draft, setDraft] = useState("");
+  const [startingCall, setStartingCall] = useState(false);
+  const [callError, setCallError] = useState<string>();
 
   const afterCursorRef = useRef<string | null>(null);
   const offlinePendingRef = useRef(new Map<string, string>());
@@ -229,6 +235,19 @@ function Thread({ conversationId }: { conversationId: string | undefined }) {
     }
   }
 
+  async function startCall() {
+    if (!conversationId || startingCall) return;
+    setStartingCall(true);
+    setCallError(undefined);
+    try {
+      const room = await roomsApi.start(conversationId);
+      navigate(`/rooms/${room.id}`);
+    } catch (error) {
+      setCallError(roomHttpErrorMessage(error));
+      setStartingCall(false);
+    }
+  }
+
   function retry(message: ViewMessage) {
     const clientMsgId = message.client_msg_id;
     if (!clientMsgId) return;
@@ -283,9 +302,15 @@ function Thread({ conversationId }: { conversationId: string | undefined }) {
           ) : (
             <span className="font-medium">{otherName}</span>
           )}
-          {!isProject && conversation?.other ? <PresenceIndicator online={conversation.other.online} /> : null}
+          <div className="flex items-center gap-3">
+            {!isProject && conversation?.other ? <PresenceIndicator online={conversation.other.online} /> : null}
+            <Button type="button" variant="outline" size="sm" disabled={startingCall} onClick={() => void startCall()}>
+              Call
+            </Button>
+          </div>
         </div>
         {!connected ? <p role="status" className="text-xs text-muted-foreground">Reconnecting…</p> : null}
+        <FormError>{callError}</FormError>
       </header>
 
       <div ref={scrollRef} role="log" aria-live="polite" className="flex flex-1 flex-col gap-3 overflow-y-auto rounded-2xl border p-4">

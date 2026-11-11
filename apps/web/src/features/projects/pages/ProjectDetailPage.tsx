@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,8 @@ import { errorMessage } from "@/features/auth/errors";
 import { projectsApi, type ProjectDetail } from "@/features/projects/api";
 import { ProjectStatusBadge } from "@/features/projects/components/ProjectStatusBadge";
 import { placesLeftLabel } from "@/features/projects/format";
+import { roomsApi } from "@/features/rooms/api";
+import { roomHttpErrorMessage } from "@/features/rooms/errors";
 import { ApiError } from "@/lib/http";
 
 type LoadState = "loading" | "ready" | "not-found" | "error";
@@ -26,10 +28,12 @@ function OwnerActions({
   project,
   busy,
   onToggleStatus,
+  onStartCall,
 }: {
   project: ProjectDetail;
   busy: boolean;
   onToggleStatus: (status: "open" | "closed") => void;
+  onStartCall: () => void;
 }) {
   const isOpen = project.status === "open";
   const canReopen = project.member_count < project.capacity;
@@ -43,9 +47,14 @@ function OwnerActions({
           <Link to={`/projects/${project.id}/applications`}>Applications</Link>
         </Button>
         {project.conversation_id ? (
-          <Button asChild variant="outline">
-            <Link to={`/messages/${project.conversation_id}`}>Team chat</Link>
-          </Button>
+          <>
+            <Button asChild variant="outline">
+              <Link to={`/messages/${project.conversation_id}`}>Team chat</Link>
+            </Button>
+            <Button variant="outline" disabled={busy} onClick={onStartCall}>
+              Team call
+            </Button>
+          </>
         ) : null}
         <Button
           variant="outline"
@@ -68,6 +77,7 @@ export function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const { state } = useAuth();
   const viewerId = state.status === "signed-in" ? state.user.id : undefined;
+  const navigate = useNavigate();
 
   const [load, setLoad] = useState<LoadState>("loading");
   const [project, setProject] = useState<ProjectDetail>();
@@ -104,13 +114,13 @@ export function ProjectDetailPage() {
     }
   }
 
-  async function runAction(action: () => Promise<void>) {
+  async function runAction(action: () => Promise<void>, toMessage: (failure: unknown) => string = errorMessage) {
     setBusy(true);
     setActionError(undefined);
     try {
       await action();
     } catch (failure) {
-      setActionError(errorMessage(failure));
+      setActionError(toMessage(failure));
       if (failure instanceof ApiError && failure.status === 409) await refreshProject();
     } finally {
       setBusy(false);
@@ -139,6 +149,15 @@ export function ProjectDetailPage() {
       await projectsApi.withdraw(project.id, applicationId);
       await refreshProject();
     });
+  }
+
+  function startTeamCall() {
+    const conversationId = project?.conversation_id;
+    if (!conversationId) return;
+    void runAction(async () => {
+      const room = await roomsApi.start(conversationId);
+      navigate(`/rooms/${room.id}`);
+    }, roomHttpErrorMessage);
   }
 
   if (!projectId) {
@@ -240,18 +259,26 @@ export function ProjectDetailPage() {
         {isOwner ? (
           <>
             <FormError>{actionError}</FormError>
-            <OwnerActions project={project} busy={busy} onToggleStatus={toggleStatus} />
+            <OwnerActions project={project} busy={busy} onToggleStatus={toggleStatus} onStartCall={startTeamCall} />
           </>
         ) : isMember ? (
-          <div className="flex flex-wrap items-center gap-3">
-            <p role="status" className="text-sm text-muted-foreground">
-              You're on this team
-            </p>
-            {project.conversation_id ? (
-              <Button asChild variant="outline">
-                <Link to={`/messages/${project.conversation_id}`}>Team chat</Link>
-              </Button>
-            ) : null}
+          <div className="flex flex-col gap-3">
+            <FormError>{actionError}</FormError>
+            <div className="flex flex-wrap items-center gap-3">
+              <p role="status" className="text-sm text-muted-foreground">
+                You're on this team
+              </p>
+              {project.conversation_id ? (
+                <>
+                  <Button asChild variant="outline">
+                    <Link to={`/messages/${project.conversation_id}`}>Team chat</Link>
+                  </Button>
+                  <Button variant="outline" disabled={busy} onClick={startTeamCall}>
+                    Team call
+                  </Button>
+                </>
+              ) : null}
+            </div>
           </div>
         ) : viewerApplication?.status === "pending" ? (
           <div className="flex flex-col gap-3">

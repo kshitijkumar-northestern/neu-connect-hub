@@ -24,6 +24,7 @@ import { NewProjectPage } from "@/features/projects/pages/NewProjectPage";
 import { ProjectApplicationsPage } from "@/features/projects/pages/ProjectApplicationsPage";
 import { ProjectDetailPage } from "@/features/projects/pages/ProjectDetailPage";
 import { ProjectsPage } from "@/features/projects/pages/ProjectsPage";
+import { RoomPage } from "@/features/rooms/pages/RoomPage";
 
 export const routes: RouteObject[] = [
   {
@@ -98,6 +99,14 @@ export const routes: RouteObject[] = [
         element: (
           <RequireVerified>
             <MyApplicationsPage />
+          </RequireVerified>
+        ),
+      },
+      {
+        path: "rooms/:roomId",
+        element: (
+          <RequireVerified>
+            <RoomPage />
           </RequireVerified>
         ),
       },
