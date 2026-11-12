@@ -63,6 +63,7 @@ async def test_the_reference_scan_covers_every_account_table() -> None:
         "blocks",
         "reports",
         "connections",
+        "profile_share_tokens",
         "conversation_members",
         "projects",
         "project_members",
@@ -87,9 +88,16 @@ async def test_deleting_an_account_leaves_no_rows_tied_to_it(
     await ada.post("/api/v1/reports", json={"user_id": grace_id, "reason": "spam"})
     await grace.post("/api/v1/reports", json={"user_id": ada_id, "reason": "harassment"})
     await ada.post("/api/v1/auth/password-reset/request", json={"email": ADA})
+    await ada.post("/api/v1/me/connection-code/rotate")
     before = await rows_referencing(clean_database, ada_id)
     assert all(
-        before[key] > 0 for key in ("profiles.user_id", "blocks.blocked_id", "sessions.user_id")
+        before[key] > 0
+        for key in (
+            "profiles.user_id",
+            "blocks.blocked_id",
+            "sessions.user_id",
+            "profile_share_tokens.user_id",
+        )
     )
 
     response = await delete_account(ada)

@@ -53,12 +53,14 @@ def make_settings(**overrides: object) -> Settings:
 
 
 PRODUCTION_SECRET = "a-production-secret-with-more-than-32-characters"
+PRODUCTION_SHARE_SECRET = "a-separate-production-secret-for-share-links"
 
 
 def production_settings(**overrides: object) -> Settings:
     values: dict[str, object] = {
         "app_env": "production",
         "session_secret": PRODUCTION_SECRET,
+        "share_token_secret": PRODUCTION_SHARE_SECRET,
         "web_origin": "https://hub.example",
         "mail_backend": "smtp",
         "smtp_host": "smtp.example.com",

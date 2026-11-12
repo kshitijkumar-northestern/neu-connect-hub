@@ -155,4 +155,16 @@ describe("ConnectionsPage", () => {
 
     expect(await screen.findByRole("heading", { name: "Verify your email" })).toBeInTheDocument();
   });
+
+  it("opens the scan dialog from Scan a code", async () => {
+    const user = userEvent.setup();
+    fakeApi({ "GET /me": [200, ADA], "GET /connections": [200, []] });
+    renderApp("/connections");
+
+    expect(screen.queryByRole("heading", { name: "Scan a code" })).not.toBeInTheDocument();
+
+    await user.click(await screen.findByRole("button", { name: "Scan a code" }));
+
+    expect(await screen.findByRole("heading", { name: "Scan a code" })).toBeInTheDocument();
+  });
 });
