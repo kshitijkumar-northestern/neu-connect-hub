@@ -9,7 +9,7 @@ import { AuthLayout } from "@/features/auth/components/AuthLayout";
 import { FormError } from "@/features/auth/components/FormError";
 import { TextField } from "@/features/auth/components/TextField";
 import { submitErrors } from "@/features/auth/errors";
-import { safeReturnPath } from "@/features/auth/guards";
+import { safeReturnPath, takeReturnHash } from "@/features/auth/guards";
 
 /** Set by ResetPasswordPage when it sends the student here. */
 export interface SignInNotice {
@@ -23,7 +23,11 @@ export function SignInPage() {
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<Partial<Record<"email" | "password" | "form", string>>>({});
   const [submitting, setSubmitting] = useState(false);
-  const returnTo = safeReturnPath(location.state);
+  // Consumed at most once per visit to this page, the same way useHashToken reads the fragment
+  // once: a lazy initializer only ever keeps its first call's result, even under StrictMode's
+  // double-render, so the destructive takeReturnHash() can't run twice and lose the hash.
+  const [returnHash] = useState(() => takeReturnHash());
+  const returnTo = safeReturnPath(location.state) + returnHash;
   const passwordWasReset = (location.state as SignInNotice | null)?.notice === "password-reset";
 
   // Also where a successful sign-in lands: signIn() updates the state and this redirect follows.

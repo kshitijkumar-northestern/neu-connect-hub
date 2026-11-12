@@ -2,6 +2,7 @@ import {
   BubbleChatIcon,
   KanbanIcon,
   Logout03Icon,
+  QrCodeScanIcon,
   Settings02Icon,
   UserIcon,
   UserCircleIcon,
@@ -69,6 +70,12 @@ export function AccountMenu() {
           <Link to="/connections">
             <HugeiconsIcon icon={UserMultipleIcon} aria-hidden="true" />
             Connections
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link to="/share">
+            <HugeiconsIcon icon={QrCodeScanIcon} aria-hidden="true" />
+            Share or scan
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>

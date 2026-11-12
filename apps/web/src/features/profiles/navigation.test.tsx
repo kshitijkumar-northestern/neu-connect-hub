@@ -17,6 +17,7 @@ describe("profile navigation", () => {
     expect(within(menu).getByRole("menuitem", { name: "Messages" })).toHaveAttribute("href", "/messages");
     expect(within(menu).getByRole("menuitem", { name: "Projects" })).toHaveAttribute("href", "/projects");
     expect(within(menu).getByRole("menuitem", { name: "Connections" })).toHaveAttribute("href", "/connections");
+    expect(within(menu).getByRole("menuitem", { name: "Share or scan" })).toHaveAttribute("href", "/share");
     await user.click(within(menu).getByRole("menuitem", { name: "Settings" }));
 
     expect(router.state.location.pathname).toBe("/settings");
@@ -32,6 +33,25 @@ describe("profile navigation", () => {
     await user.click(within(menu).getByRole("menuitem", { name: "Connections" }));
 
     expect(router.state.location.pathname).toBe("/connections");
+  });
+
+  it("links to share or scan from the account menu, after Connections", async () => {
+    const user = userEvent.setup();
+    fakeApi({
+      "GET /me": [200, ADA],
+      "GET /me/connection-code": [200, { status: "off", url: null, expires_at: null, shareable: true }],
+    });
+    const { router } = renderApp("/");
+
+    await user.click(await screen.findByRole("button", { name: `Account: ${ADA.email}` }));
+    const menu = await screen.findByRole("menu");
+    const labels = within(menu)
+      .getAllByRole("menuitem")
+      .map((item) => item.textContent);
+    expect(labels.indexOf("Share or scan")).toBeGreaterThan(labels.indexOf("Connections"));
+    await user.click(within(menu).getByRole("menuitem", { name: "Share or scan" }));
+
+    expect(router.state.location.pathname).toBe("/share");
   });
 
   it("links to projects from the account menu", async () => {

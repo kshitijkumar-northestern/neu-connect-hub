@@ -358,4 +358,39 @@ describe("route guards", () => {
 
     expect(await screen.findByText("verified page")).toBeInTheDocument();
   });
+
+  it("keeps a /connect#token=... link through sign-in and lands back on it with the token, without the token ever touching router/history state", async () => {
+    const token = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLM1234"; // 43 chars of [A-Za-z0-9_-]
+    const user = userEvent.setup();
+    const api = fakeApi({
+      "GET /me": apiError(401, "unauthorized"),
+      "POST /auth/login": [200, ADA],
+      "POST /connect/resolve": [
+        200,
+        {
+          user_id: "22222222-2222-4222-8222-222222222222",
+          display_name: "Grace Hopper",
+          headline: "",
+          connection_state: "none",
+        },
+      ],
+    });
+    const { router } = renderApp(`/connect#token=${token}`);
+
+    expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
+    // The redirect to sign-in carries only the path: the token never rides along in
+    // router/history state, unlike `from`.
+    expect(router.state.location.state).toEqual({ from: "/connect" });
+    expect(JSON.stringify(router.state.location.state)).not.toContain(token);
+
+    await user.type(screen.getByLabelText("University email"), "ada@northeastern.edu");
+    await user.type(screen.getByLabelText("Password"), PASSWORD);
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(await screen.findByRole("heading", { name: "Grace Hopper" })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/connect");
+    // useHashToken clears the fragment once it's read.
+    expect(router.state.location.hash).toBe("");
+    expect(api.callsTo("POST /connect/resolve")[0]?.body).toEqual({ token });
+  });
 });

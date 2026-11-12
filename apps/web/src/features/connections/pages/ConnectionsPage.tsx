@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { FormError } from "@/features/auth/components/FormError";
 import { errorMessage } from "@/features/auth/errors";
 import { connectionsApi, type Connection } from "@/features/connections/api";
+import { ScanCodeDialog } from "@/features/scan/components/ScanCodeDialog";
 import { ApiError } from "@/lib/http";
 
 type LoadState = "loading" | "ready" | "error";
@@ -98,6 +99,7 @@ export function ConnectionsPage() {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [error, setError] = useState<string>();
   const [busyId, setBusyId] = useState<string>();
+  const [scanOpen, setScanOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -181,7 +183,13 @@ export function ConnectionsPage() {
 
   return (
     <section className="flex flex-col gap-10">
-      <h1 className="text-2xl font-semibold tracking-tight">Connections</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold tracking-tight">Connections</h1>
+        <Button type="button" variant="outline" onClick={() => setScanOpen(true)}>
+          Scan a code
+        </Button>
+      </div>
+      <ScanCodeDialog open={scanOpen} onOpenChange={setScanOpen} />
       <FormError>{error}</FormError>
 
       <div className="flex flex-col gap-4">

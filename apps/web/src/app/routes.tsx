@@ -25,6 +25,8 @@ import { ProjectApplicationsPage } from "@/features/projects/pages/ProjectApplic
 import { ProjectDetailPage } from "@/features/projects/pages/ProjectDetailPage";
 import { ProjectsPage } from "@/features/projects/pages/ProjectsPage";
 import { RoomPage } from "@/features/rooms/pages/RoomPage";
+import { ConnectPage } from "@/features/scan/pages/ConnectPage";
+import { SharePage } from "@/features/scan/pages/SharePage";
 
 export const routes: RouteObject[] = [
   {
@@ -107,6 +109,24 @@ export const routes: RouteObject[] = [
         element: (
           <RequireVerified>
             <RoomPage />
+          </RequireVerified>
+        ),
+      },
+      {
+        path: "share",
+        element: (
+          <RequireVerified>
+            <SharePage />
+          </RequireVerified>
+        ),
+      },
+      {
+        // The path a QR code opens, with the token in the fragment (#token=...): browsers never
+        // send a fragment, so it stays out of request logs; the page posts it to the API.
+        path: "connect",
+        element: (
+          <RequireVerified>
+            <ConnectPage />
           </RequireVerified>
         ),
       },
