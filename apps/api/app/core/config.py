@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Self
@@ -15,6 +17,7 @@ PLACEHOLDER_SECRETS = frozenset({"replace_with_random_local_secret", "replace_if
 MIN_PRODUCTION_SECRET_LENGTH = 32
 MAX_TURN_CREDENTIAL_TTL_SECONDS = 3600
 MAX_ROOM_CAPACITY = 8
+MAX_SHARE_TOKEN_TTL_SECONDS = 365 * 24 * 3600
 _DEFAULT_PORTS = {"http": 80, "https": 443}
 _ORIGIN_ERROR = "WEB_ORIGIN must be a bare origin such as https://hub.example"
 
@@ -65,6 +68,12 @@ class Settings(BaseSettings):
     turn_secret: SecretStr | None = None
     turn_credential_ttl_seconds: int = 3600
 
+    # Scan to Connect. A share token is HMAC-SHA256(SHARE_TOKEN_SECRET, token row id), so the
+    # server can show the current link again while the database keeps only its hash. Outside
+    # production it falls back to a key derived from SESSION_SECRET.
+    share_token_secret: SecretStr | None = None
+    share_token_ttl_seconds: int = 30 * 24 * 3600
+
     # Argon2id cost. The defaults match argon2-cffi's RFC 9106 low-memory profile; tests lower them.
     argon2_time_cost: int = 3
     argon2_memory_cost_kib: int = 65536
@@ -91,6 +100,16 @@ class Settings(BaseSettings):
         return [url.strip() for url in self.turn_urls.split(",") if url.strip()]
 
     @property
+    def share_token_key(self) -> bytes:
+        """The key that signs share tokens: SHARE_TOKEN_SECRET, or (outside production, where
+        it's required) a key derived from SESSION_SECRET, so local setups need no extra value."""
+        if self.share_token_secret is not None:
+            return self.share_token_secret.get_secret_value().encode()
+        return hmac.new(
+            self.session_secret.get_secret_value().encode(), b"share-token", hashlib.sha256
+        ).digest()
+
+    @property
     def cookie_secure(self) -> bool:
         """Secure cookies whenever the site is served over https (always, in production)."""
         return self.web_origin.startswith("https://")
@@ -109,6 +128,13 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"TURN_CREDENTIAL_TTL_SECONDS must be 60-{MAX_TURN_CREDENTIAL_TTL_SECONDS}"
             )
+        return value
+
+    @field_validator("share_token_ttl_seconds")
+    @classmethod
+    def _share_token_lifetime(cls, value: int) -> int:
+        if not 3600 <= value <= MAX_SHARE_TOKEN_TTL_SECONDS:
+            raise ValueError(f"SHARE_TOKEN_TTL_SECONDS must be 3600-{MAX_SHARE_TOKEN_TTL_SECONDS}")
         return value
 
     @field_validator("room_capacity")
@@ -162,6 +188,14 @@ class Settings(BaseSettings):
             raise ValueError("WEB_ORIGIN must use https in production")
         if self.mail_backend != "smtp" or not self.smtp_host:
             raise ValueError("MAIL_BACKEND must be smtp with SMTP_HOST set in production")
+        share_secret = self.share_token_secret.get_secret_value() if self.share_token_secret else ""
+        if share_secret in PLACEHOLDER_SECRETS or len(share_secret) < MIN_PRODUCTION_SECRET_LENGTH:
+            raise ValueError(
+                f"SHARE_TOKEN_SECRET must be a random value of at least "
+                f"{MIN_PRODUCTION_SECRET_LENGTH} characters in production"
+            )
+        if share_secret == self.session_secret.get_secret_value():
+            raise ValueError("SHARE_TOKEN_SECRET must differ from SESSION_SECRET in production")
         if self.turn_url_list:
             turn_secret = self.turn_secret.get_secret_value() if self.turn_secret else ""
             if (
