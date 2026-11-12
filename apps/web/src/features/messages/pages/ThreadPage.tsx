@@ -160,6 +160,11 @@ function Thread({ conversationId }: { conversationId: string | undefined }) {
 
   useEffect(
     () =>
+      // Fires on every reconnect but NOT the socket's first-ever connect (SocketProvider's
+      // contract): catches the thread up on anything it missed while disconnected. Resending
+      // whatever was queued offline is handled separately below, since that must also run on the
+      // very first connect (a message typed before the socket connects at all has nothing to
+      // "reconnect" to).
       onReconnect(() => {
         if (!conversationId) return;
         void (async () => {
@@ -171,13 +176,20 @@ function Thread({ conversationId }: { conversationId: string | undefined }) {
           } catch {
             // The live feed and the next successful fetch will fill any gap this missed.
           }
-          for (const [clientMsgId, body] of offlinePendingRef.current) {
-            void attemptSend(clientMsgId, body);
-          }
         })();
       }),
-    [onReconnect, conversationId, attemptSend],
+    [onReconnect, conversationId],
   );
+
+  // Flushes whatever got queued in offlinePendingRef while disconnected, as soon as the socket is
+  // connected — including the very first connect (a message typed right after opening a fresh
+  // thread, before the socket finishes its first handshake, must still go out).
+  useEffect(() => {
+    if (!connected) return;
+    for (const [clientMsgId, body] of offlinePendingRef.current) {
+      void attemptSend(clientMsgId, body);
+    }
+  }, [connected, attemptSend]);
 
   useLayoutEffect(() => {
     const container = scrollRef.current;

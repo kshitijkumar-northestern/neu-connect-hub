@@ -263,6 +263,55 @@ describe("ThreadPage", () => {
     expect(pendingSendPayloads()[0]?.body).toBe("Sent while offline");
   });
 
+  it("sends a message typed before the socket's very first connect, once it connects", async () => {
+    fakeApi({
+      "GET /me": [200, ADA],
+      "GET /conversations/conv-1": [200, CONVERSATION],
+      [`GET /conversations/${CONVERSATION_ID}/messages`]: messagesRoute({ messages: [], before: null, after: null }),
+    });
+    const user = userEvent.setup();
+    renderApp(`/messages/${CONVERSATION_ID}`);
+    await screen.findByRole("log");
+
+    // The socket has never connected yet: `connected` starts false.
+    await user.type(screen.getByLabelText("Message"), "Typed before first connect");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(await screen.findByText("Sending…")).toBeInTheDocument();
+    expect(pendingSendPayloads()).toHaveLength(0); // nothing emitted yet: never connected
+
+    act(() => triggerConnect()); // the socket's first-ever connection
+
+    await waitFor(() => expect(pendingSendPayloads()).toHaveLength(1));
+    expect(pendingSendPayloads()[0]?.body).toBe("Typed before first connect");
+  });
+
+  it("resends a queued offline message exactly once on a reconnect", async () => {
+    fakeApi({
+      "GET /me": [200, ADA],
+      "GET /conversations/conv-1": [200, CONVERSATION],
+      [`GET /conversations/${CONVERSATION_ID}/messages`]: messagesRoute({ messages: [], before: null, after: null }),
+    });
+    const user = userEvent.setup();
+    renderApp(`/messages/${CONVERSATION_ID}`);
+    await screen.findByRole("log");
+
+    act(() => triggerConnect()); // the socket's first-ever connection
+    act(() => triggerDisconnect());
+    expect(await screen.findByText("Reconnecting…")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Message"), "Queued once");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    expect(pendingSendPayloads()).toHaveLength(0); // still offline
+
+    act(() => triggerConnect()); // a reconnect this time
+
+    await waitFor(() => expect(pendingSendPayloads()).toHaveLength(1));
+    const [payload] = pendingSendPayloads();
+    expect(payload?.body).toBe("Queued once");
+    expect(sentPayloadsFor(payload!.client_msg_id)).toHaveLength(1);
+  });
+
   it("refreshes auth when a send comes back unauthorized", async () => {
     const api = fakeApi({
       "GET /me": () => [200, ADA],
