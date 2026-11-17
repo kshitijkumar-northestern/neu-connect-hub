@@ -242,17 +242,12 @@ async def seed(settings: Settings, *, count: int = 40, password: str) -> int:
                         )
                     )
 
-                # Add 1-5 availability slots on distinct weekdays and start times.
-                num_slots = rng.randint(1, 5)
-                used_pairs = set()
-                for _ in range(num_slots):
-                    while True:
-                        weekday = rng.randint(0, 6)
-                        # Align to 30 minutes: start_min must be a multiple of 30.
-                        start_min = rng.randint(0, (1440 // 30) - 1) * 30
-                        if (weekday, start_min) not in used_pairs:
-                            used_pairs.add((weekday, start_min))
-                            break
+                # 1-5 availability slots, each on its own weekday, so they can never overlap
+                # (the profile API refuses overlapping ranges on the same day).
+                weekdays = rng.sample(range(7), rng.randint(1, 5))
+                for weekday in weekdays:
+                    # Align to 30 minutes: start_min must be a multiple of 30.
+                    start_min = rng.randint(0, (1440 // 30) - 1) * 30
 
                     # End time is after start (at least 30 minutes later, aligned to 30 min).
                     minutes_remaining = (1440 - start_min) // 30
