@@ -131,6 +131,32 @@ export function stubGetUserMedia(
   return getUserMedia;
 }
 
+/** Makes `navigator.mediaDevices.getUserMedia` return a promise the test controls: it stays
+ * pending until `resolve`/`reject` is called, for testing the window between pressing "Check
+ * camera and microphone" and the stream (or the denial) actually arriving. */
+export function stubGetUserMediaPending(): {
+  getUserMedia: ReturnType<typeof vi.fn>;
+  resolve: (stream?: FakeMediaStream) => void;
+  reject: (error: Error) => void;
+} {
+  let settleResolve!: (stream: FakeMediaStream) => void;
+  let settleReject!: (error: Error) => void;
+  const pending = new Promise<FakeMediaStream>((res, rej) => {
+    settleResolve = res;
+    settleReject = rej;
+  });
+  const getUserMedia = vi.fn(() => pending);
+  Object.defineProperty(globalThis.navigator, "mediaDevices", {
+    value: { getUserMedia },
+    configurable: true,
+  });
+  return {
+    getUserMedia,
+    resolve: (stream = new FakeMediaStream()) => settleResolve(stream),
+    reject: (error: Error) => settleReject(error),
+  };
+}
+
 /** Replaces the global `RTCPeerConnection` (jsdom has none) with the fake one, for a page test
  * that exercises `mesh.ts` through its own default factory instead of injecting one. Call the
  * returned `uninstall` in `afterEach`. */

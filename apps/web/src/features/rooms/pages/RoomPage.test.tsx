@@ -19,7 +19,7 @@ import {
   triggerPeerLeft,
   triggerRoomRemoved,
 } from "@/test/fake-socket";
-import { FakeMediaStream, installFakeRTCPeerConnection, stubGetUserMedia } from "@/test/fake-webrtc";
+import { FakeMediaStream, installFakeRTCPeerConnection, stubGetUserMedia, stubGetUserMediaPending } from "@/test/fake-webrtc";
 import { renderApp } from "@/test/render-app";
 
 vi.mock("@/lib/socket", async () => (await import("@/test/fake-socket")).fakeSocketModule);
@@ -129,6 +129,69 @@ describe("RoomPage", () => {
 
     await waitFor(() => expect(getUserMedia).toHaveBeenCalledWith({ audio: true, video: true }));
     expect(await screen.findByText("You")).toBeInTheDocument();
+  });
+
+  it("disables Join call while the camera/microphone check is pending, and sends real tracks once it resolves", async () => {
+    const media = stubGetUserMediaPending();
+    fakeApi(baseRoutes());
+    const user = userEvent.setup();
+    renderApp(`/rooms/${ROOM_ID}`);
+
+    await user.click(await screen.findByRole("button", { name: "Check camera and microphone" }));
+
+    // Still waiting on getUserMedia: Join call must be disabled and announced as busy, not just
+    // happen to be unclicked.
+    const startingButton = await screen.findByRole("button", { name: "Starting camera…" });
+    expect(startingButton).toBeDisabled();
+    expect(startingButton).toHaveAttribute("aria-busy", "true");
+
+    // A click on a disabled button is a no-op, but assert directly on the signalling channel too:
+    // nothing must have been emitted.
+    await user.click(startingButton);
+    expect(pendingRoomJoinPayloads()).toEqual([]);
+
+    media.resolve();
+
+    const joinButton = await screen.findByRole("button", { name: "Join call" });
+    expect(joinButton).toBeEnabled();
+
+    await user.click(joinButton);
+    await awaitJoinAttempt();
+    // A peer in the ack, so the mesh actually opens a connection to inspect below.
+    await flushAct(() =>
+      resolveRoomJoin({ ok: true, room_id: ROOM_ID, peers: [{ user_id: OTHER_ID, display_name: "Grace Hopper" }] }),
+    );
+    await screen.findByRole("button", { name: "Leave call" });
+
+    // The mesh must have been built from the stream that arrived, not from nothing: real tracks,
+    // no "receive-only" fallback transceivers standing in for a stream that was actually there.
+    const [connection] = peerConnections.connections;
+    expect(connection?.addedTracks.length).toBeGreaterThan(0);
+    expect(connection?.addedTransceivers).toEqual([]);
+  });
+
+  it("re-enables Join call for a listen-only join when the camera/microphone check is denied", async () => {
+    const media = stubGetUserMediaPending();
+    fakeApi(baseRoutes());
+    const user = userEvent.setup();
+    renderApp(`/rooms/${ROOM_ID}`);
+
+    await user.click(await screen.findByRole("button", { name: "Check camera and microphone" }));
+    expect(await screen.findByRole("button", { name: "Starting camera…" })).toBeDisabled();
+
+    media.reject(new Error("Permission denied"));
+
+    const joinButton = await screen.findByRole("button", { name: "Join call" });
+    expect(joinButton).toBeEnabled();
+    expect(
+      await screen.findByText("We can't use your camera or microphone. You can still join and listen."),
+    ).toBeInTheDocument();
+
+    await user.click(joinButton);
+    await awaitJoinAttempt();
+    await flushAct(() => resolveRoomJoin({ ok: true, room_id: ROOM_ID, peers: [] }));
+
+    expect(await screen.findByRole("button", { name: "Leave call" })).toBeInTheDocument();
   });
 
   it("falls back to receive-only when permission is denied, and still allows joining", async () => {
