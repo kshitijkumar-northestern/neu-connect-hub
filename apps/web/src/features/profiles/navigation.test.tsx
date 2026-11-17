@@ -73,4 +73,30 @@ describe("profile navigation", () => {
     expect(await screen.findByRole("heading", { name: "Verify your email" })).toBeInTheDocument();
     expect(api.callsTo("GET /me/profile")).toHaveLength(0);
   });
+
+  it("shows an Admin item in the account menu only for admins", async () => {
+    const user = userEvent.setup();
+    fakeApi({ "GET /me": [200, ADA] });
+    renderApp("/");
+
+    await user.click(await screen.findByRole("button", { name: `Account: ${ADA.email}` }));
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).queryByRole("menuitem", { name: "Admin" })).not.toBeInTheDocument();
+  });
+
+  it("links to the admin reports queue from the account menu for an admin", async () => {
+    const user = userEvent.setup();
+    fakeApi({
+      "GET /me": [200, { ...ADA, role: "admin" }],
+      "GET /admin/mfa": [200, { enrolled: true, verified: true, recovery_codes_left: 10 }],
+      "GET /admin/reports": [200, { items: [], next_offset: null }],
+    });
+    const { router } = renderApp("/");
+
+    await user.click(await screen.findByRole("button", { name: `Account: ${ADA.email}` }));
+    const menu = await screen.findByRole("menu");
+    await user.click(within(menu).getByRole("menuitem", { name: "Admin" }));
+
+    expect(router.state.location.pathname).toBe("/admin");
+  });
 });
