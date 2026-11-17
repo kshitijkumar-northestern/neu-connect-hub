@@ -5,10 +5,12 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from app.core.config import MAX_SHARE_TOKEN_TTL_SECONDS, Settings
+from app.core.config import MAX_ADMIN_MFA_AGE_SECONDS, MAX_SHARE_TOKEN_TTL_SECONDS, Settings
 from tests.conftest import (
     API_ROOT,
+    PRODUCTION_MFA_SECRET,
     PRODUCTION_SECRET,
+    PRODUCTION_SHARE_SECRET,
     TEST_SESSION_SECRET,
     make_settings,
     production_settings,
@@ -226,3 +228,55 @@ def test_share_token_ttl_seconds_bounds_are_refused(value: int) -> None:
 @pytest.mark.parametrize("value", [3600, MAX_SHARE_TOKEN_TTL_SECONDS])
 def test_share_token_ttl_seconds_bounds_are_accepted(value: int) -> None:
     assert make_settings(share_token_ttl_seconds=value).share_token_ttl_seconds == value
+
+
+@pytest.mark.parametrize("secret", [None, "replace_with_random_local_secret", "too-short"])
+def test_production_rejects_missing_placeholder_or_short_mfa_secret_keys(
+    secret: str | None,
+) -> None:
+    with pytest.raises(ValidationError, match="MFA_SECRET_KEY"):
+        production_settings(mfa_secret_key=secret)
+
+
+def test_production_rejects_an_mfa_secret_key_equal_to_the_session_secret() -> None:
+    with pytest.raises(ValidationError, match="MFA_SECRET_KEY"):
+        production_settings(mfa_secret_key=PRODUCTION_SECRET)
+
+
+def test_production_rejects_an_mfa_secret_key_equal_to_the_share_token_secret() -> None:
+    with pytest.raises(ValidationError, match="MFA_SECRET_KEY"):
+        production_settings(mfa_secret_key=PRODUCTION_SHARE_SECRET)
+
+
+def test_production_allows_a_distinct_mfa_secret_key() -> None:
+    settings = production_settings()
+
+    assert settings.mfa_secret_key is not None
+    assert settings.mfa_secret_key.get_secret_value() == PRODUCTION_MFA_SECRET
+
+
+def test_mfa_key_falls_back_to_a_key_derived_from_session_secret_outside_production() -> None:
+    settings = make_settings()
+
+    assert settings.mfa_secret_key is None
+    assert (
+        settings.mfa_key
+        == hmac.new(TEST_SESSION_SECRET.encode(), b"admin-mfa", hashlib.sha256).digest()
+    )
+
+
+def test_mfa_key_uses_the_configured_secret_when_set() -> None:
+    settings = make_settings(mfa_secret_key="a-distinct-local-mfa-secret")
+
+    assert settings.mfa_key == b"a-distinct-local-mfa-secret"
+
+
+@pytest.mark.parametrize("value", [299, MAX_ADMIN_MFA_AGE_SECONDS + 1])
+def test_admin_mfa_max_age_seconds_bounds_are_refused(value: int) -> None:
+    with pytest.raises(ValidationError, match="ADMIN_MFA_MAX_AGE_SECONDS"):
+        make_settings(admin_mfa_max_age_seconds=value)
+
+
+@pytest.mark.parametrize("value", [300, MAX_ADMIN_MFA_AGE_SECONDS])
+def test_admin_mfa_max_age_seconds_bounds_are_accepted(value: int) -> None:
+    assert make_settings(admin_mfa_max_age_seconds=value).admin_mfa_max_age_seconds == value

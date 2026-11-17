@@ -1,6 +1,7 @@
 """Request authentication: trusted origin, session cookie and CSRF token."""
 
 import hmac
+from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -66,6 +67,31 @@ async def current_session(
 async def require_verified(current: CurrentSession = Depends(current_session)) -> CurrentSession:
     if current.user.verified_at is None:
         raise AppError(403, "verification_required", "Verify your email address to continue.")
+    return current
+
+
+async def require_admin(current: CurrentSession = Depends(require_verified)) -> CurrentSession:
+    """Administrators only. Everyone else gets the same 404 as a missing page, so the admin area
+    doesn't reveal that it exists."""
+    if current.user.role != "admin":
+        raise AppError(404, "not_found", "Not found.")
+    return current
+
+
+def mfa_is_recent(session: UserSession, settings: Settings) -> bool:
+    """True when the session passed MFA within ADMIN_MFA_MAX_AGE_SECONDS. The one definition
+    both the admin routes and the MFA status use, so the two can never disagree."""
+    verified_at = session.mfa_verified_at
+    max_age = timedelta(seconds=settings.admin_mfa_max_age_seconds)
+    return verified_at is not None and datetime.now(UTC) - verified_at <= max_age
+
+
+async def require_admin_mfa(
+    request: Request, current: CurrentSession = Depends(require_admin)
+) -> CurrentSession:
+    """An administrator whose session passed MFA recently."""
+    if not mfa_is_recent(current.session, request.app.state.settings):
+        raise AppError(403, "mfa_required", "Confirm it's you with your authenticator app.")
     return current
 
 

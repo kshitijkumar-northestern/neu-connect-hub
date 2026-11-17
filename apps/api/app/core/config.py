@@ -18,6 +18,7 @@ MIN_PRODUCTION_SECRET_LENGTH = 32
 MAX_TURN_CREDENTIAL_TTL_SECONDS = 3600
 MAX_ROOM_CAPACITY = 8
 MAX_SHARE_TOKEN_TTL_SECONDS = 365 * 24 * 3600
+MAX_ADMIN_MFA_AGE_SECONDS = 24 * 3600
 _DEFAULT_PORTS = {"http": 80, "https": 443}
 _ORIGIN_ERROR = "WEB_ORIGIN must be a bare origin such as https://hub.example"
 
@@ -74,6 +75,13 @@ class Settings(BaseSettings):
     share_token_secret: SecretStr | None = None
     share_token_ttl_seconds: int = 30 * 24 * 3600
 
+    # Administrator multifactor authentication. An admin's TOTP secret is
+    # HMAC-SHA256(MFA_SECRET_KEY, user id + enrolment nonce): only the nonce is stored, so the
+    # database alone never reveals a secret. Outside production the key falls back to one derived
+    # from SESSION_SECRET. Admin routes need a session that passed MFA within the max age.
+    mfa_secret_key: SecretStr | None = None
+    admin_mfa_max_age_seconds: int = 8 * 3600
+
     # Argon2id cost. The defaults match argon2-cffi's RFC 9106 low-memory profile; tests lower them.
     argon2_time_cost: int = 3
     argon2_memory_cost_kib: int = 65536
@@ -110,6 +118,16 @@ class Settings(BaseSettings):
         ).digest()
 
     @property
+    def mfa_key(self) -> bytes:
+        """The key that derives admins' TOTP secrets: MFA_SECRET_KEY, or (outside production,
+        where it's required) a key derived from SESSION_SECRET."""
+        if self.mfa_secret_key is not None:
+            return self.mfa_secret_key.get_secret_value().encode()
+        return hmac.new(
+            self.session_secret.get_secret_value().encode(), b"admin-mfa", hashlib.sha256
+        ).digest()
+
+    @property
     def cookie_secure(self) -> bool:
         """Secure cookies whenever the site is served over https (always, in production)."""
         return self.web_origin.startswith("https://")
@@ -135,6 +153,13 @@ class Settings(BaseSettings):
     def _share_token_lifetime(cls, value: int) -> int:
         if not 3600 <= value <= MAX_SHARE_TOKEN_TTL_SECONDS:
             raise ValueError(f"SHARE_TOKEN_TTL_SECONDS must be 3600-{MAX_SHARE_TOKEN_TTL_SECONDS}")
+        return value
+
+    @field_validator("admin_mfa_max_age_seconds")
+    @classmethod
+    def _recent_mfa(cls, value: int) -> int:
+        if not 300 <= value <= MAX_ADMIN_MFA_AGE_SECONDS:
+            raise ValueError(f"ADMIN_MFA_MAX_AGE_SECONDS must be 300-{MAX_ADMIN_MFA_AGE_SECONDS}")
         return value
 
     @field_validator("room_capacity")
@@ -196,6 +221,16 @@ class Settings(BaseSettings):
             )
         if share_secret == self.session_secret.get_secret_value():
             raise ValueError("SHARE_TOKEN_SECRET must differ from SESSION_SECRET in production")
+        mfa_secret = self.mfa_secret_key.get_secret_value() if self.mfa_secret_key else ""
+        if mfa_secret in PLACEHOLDER_SECRETS or len(mfa_secret) < MIN_PRODUCTION_SECRET_LENGTH:
+            raise ValueError(
+                f"MFA_SECRET_KEY must be a random value of at least "
+                f"{MIN_PRODUCTION_SECRET_LENGTH} characters in production"
+            )
+        if mfa_secret in (self.session_secret.get_secret_value(), share_secret):
+            raise ValueError(
+                "MFA_SECRET_KEY must differ from SESSION_SECRET and SHARE_TOKEN_SECRET"
+            )
         if self.turn_url_list:
             turn_secret = self.turn_secret.get_secret_value() if self.turn_secret else ""
             if (
