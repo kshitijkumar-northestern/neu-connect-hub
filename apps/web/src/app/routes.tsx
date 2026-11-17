@@ -2,6 +2,9 @@ import type { RouteObject } from "react-router";
 import { Outlet } from "react-router";
 
 import { HomePage } from "@/app/HomePage";
+import { AdminGate } from "@/features/admin/components/AdminGate";
+import { ReportDetailPage } from "@/features/admin/pages/ReportDetailPage";
+import { ReportsPage } from "@/features/admin/pages/ReportsPage";
 import { NotFoundPage } from "@/app/NotFoundPage";
 import { RootLayout } from "@/app/RootLayout";
 import { RouteErrorView } from "@/app/RouteErrorView";
@@ -129,6 +132,19 @@ export const routes: RouteObject[] = [
             <ConnectPage />
           </RequireVerified>
         ),
+      },
+      {
+        path: "admin",
+        element: (
+          <RequireVerified>
+            {/* The gate shows students the not-found page and asks admins for MFA first. */}
+            <AdminGate />
+          </RequireVerified>
+        ),
+        children: [
+          { index: true, element: <ReportsPage /> },
+          { path: "reports/:reportId", element: <ReportDetailPage /> },
+        ],
       },
       {
         path: "settings",

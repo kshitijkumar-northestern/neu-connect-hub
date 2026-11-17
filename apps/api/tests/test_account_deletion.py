@@ -70,6 +70,9 @@ async def test_the_reference_scan_covers_every_account_table() -> None:
         "applications",
         "rooms",
         "room_members",
+        "admin_mfa",
+        "admin_recovery_codes",
+        "admin_audit_log",
     } <= tables
 
 
@@ -363,5 +366,70 @@ async def test_deleting_a_rooms_creator_keeps_the_call_going_for_the_others(
     # No row anywhere still points at the deleted account.
     assert (
         await scalar(clean_database, "SELECT count(*) FROM rooms WHERE created_by = :id", id=ada_id)
+        == 0
+    )
+
+
+async def test_an_admins_audit_rows_survive_their_own_account_deletion(
+    app: object, mailer: MemoryMailer, clean_database: AsyncEngine
+) -> None:
+    """The log is the point: it must outlive the account it's about, with the id merely
+    nulled, never the row itself. MFA enrolment, by contrast, is personal and goes with them."""
+    admin = await student(app, mailer, ADA)
+    admin_id = await user_id(admin)
+    await execute(clean_database, "UPDATE users SET role = 'admin' WHERE id = :id", id=admin_id)
+    audit_id = str(uuid.uuid4())
+    await execute(
+        clean_database,
+        "INSERT INTO admin_audit_log (id, admin_id, action)"
+        " VALUES (:id, :admin_id, 'admin_granted')",
+        id=audit_id,
+        admin_id=admin_id,
+    )
+    await execute(
+        clean_database,
+        "INSERT INTO admin_mfa (user_id, nonce, confirmed_at, last_used_step)"
+        " VALUES (:id, :nonce, now(), 1)",
+        id=admin_id,
+        nonce=b"0123456789abcdef",
+    )
+    await execute(
+        clean_database,
+        "INSERT INTO admin_recovery_codes (id, user_id, code_hash) VALUES (:id, :uid, :hash)",
+        id=str(uuid.uuid4()),
+        uid=admin_id,
+        hash="b" * 64,
+    )
+
+    response = await delete_account(admin)
+    assert response.status_code == 204
+
+    assert (
+        await scalar(clean_database, "SELECT count(*) FROM users WHERE id = :id", id=admin_id) == 0
+    )
+    assert (
+        await scalar(
+            clean_database, "SELECT count(*) FROM admin_audit_log WHERE id = :id", id=audit_id
+        )
+        == 1
+    )
+    assert (
+        await scalar(
+            clean_database, "SELECT admin_id FROM admin_audit_log WHERE id = :id", id=audit_id
+        )
+        is None
+    )
+    assert (
+        await scalar(
+            clean_database, "SELECT count(*) FROM admin_mfa WHERE user_id = :id", id=admin_id
+        )
+        == 0
+    )
+    assert (
+        await scalar(
+            clean_database,
+            "SELECT count(*) FROM admin_recovery_codes WHERE user_id = :id",
+            id=admin_id,
+        )
         == 0
     )

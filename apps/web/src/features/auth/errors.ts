@@ -36,6 +36,17 @@ const MESSAGES = new Map<string, string>([
   ["cannot_remove_role_in_use", "A role with members or pending applications can't be removed."],
   // Codes from apps/api/app/modules/rooms/service.py.
   ["room_ended", "This call has ended."],
+  // Codes from apps/api/app/modules/admin/mfa_router.py and reports_router.py.
+  ["invalid_code", "That code didn't work. Check the time on your device and try again."],
+  ["mfa_required", "Verify it's you to continue."],
+  [
+    "mfa_already_enrolled",
+    "This account already has an authenticator set up. Use a recovery code, or ask whoever runs NU Connect Hub to reset it.",
+  ],
+  ["mfa_not_pending", "Start setting up your authenticator again before confirming a code."],
+  ["mfa_not_enrolled", "Set up an authenticator before continuing."],
+  ["report_closed", "This report was already handled."],
+  ["cannot_suspend_admin", "Admin accounts can't be suspended."],
 ]);
 
 const FALLBACK = "Something went wrong. Please try again.";

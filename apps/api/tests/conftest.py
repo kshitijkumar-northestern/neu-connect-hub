@@ -54,6 +54,7 @@ def make_settings(**overrides: object) -> Settings:
 
 PRODUCTION_SECRET = "a-production-secret-with-more-than-32-characters"
 PRODUCTION_SHARE_SECRET = "a-separate-production-secret-for-share-links"
+PRODUCTION_MFA_SECRET = "a-third-production-secret-for-admin-mfa-keys"
 
 
 def production_settings(**overrides: object) -> Settings:
@@ -61,6 +62,7 @@ def production_settings(**overrides: object) -> Settings:
         "app_env": "production",
         "session_secret": PRODUCTION_SECRET,
         "share_token_secret": PRODUCTION_SHARE_SECRET,
+        "mfa_secret_key": PRODUCTION_MFA_SECRET,
         "web_origin": "https://hub.example",
         "mail_backend": "smtp",
         "smtp_host": "smtp.example.com",

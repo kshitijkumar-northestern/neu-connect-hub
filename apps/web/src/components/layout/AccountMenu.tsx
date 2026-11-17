@@ -4,6 +4,7 @@ import {
   Logout03Icon,
   QrCodeScanIcon,
   Settings02Icon,
+  Shield01Icon,
   UserIcon,
   UserCircleIcon,
   UserMultipleIcon,
@@ -84,6 +85,14 @@ export function AccountMenu() {
             Settings
           </Link>
         </DropdownMenuItem>
+        {state.user.role === "admin" ? (
+          <DropdownMenuItem asChild>
+            <Link to="/admin">
+              <HugeiconsIcon icon={Shield01Icon} aria-hidden="true" />
+              Admin
+            </Link>
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onSelect={() => {

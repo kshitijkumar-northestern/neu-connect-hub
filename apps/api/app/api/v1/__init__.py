@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends
 
 from app.api.v1 import health
 from app.core.security import require_trusted_origin
+from app.modules.admin.mfa_router import router as admin_mfa_router
+from app.modules.admin.reports_router import router as admin_reports_router
 from app.modules.auth.router import router as auth_router
 from app.modules.chat.router import router as chat_router
 from app.modules.connections.router import router as connections_router
@@ -24,3 +26,5 @@ router.include_router(chat_router)
 router.include_router(teams_router)
 router.include_router(rooms_router)
 router.include_router(scan_router)
+router.include_router(admin_mfa_router)
+router.include_router(admin_reports_router)
