@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.core.errors import AppError
+from app.ml.models import Embedding
 from app.modules.admin import audit
 from app.modules.admin.reports_schemas import (
     AdminReport,
@@ -119,6 +120,9 @@ class ReportsService:
         now = datetime.now(UTC)
         target.suspended_at = now
         await self.db.execute(delete(UserSession).where(UserSession.user_id == target.id))
+        # A suspended account must never keep a vector matching could still surface, and it
+        # shouldn't outlive the suspension either.
+        await self.db.execute(delete(Embedding).where(Embedding.user_id == target.id))
         # Every open report against this target closes with the suspension, including the one
         # that triggered it.
         await self.db.execute(

@@ -25,6 +25,10 @@ WEB_ORIGIN = "http://localhost:8080"
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 os.environ["SESSION_SECRET"] = TEST_SESSION_SECRET
 os.environ["APP_ENV"] = "test"
+# The module-level app in app.main is built from the environment at import time: keep it on the
+# deterministic encoder with no worker, so importing it never loads the real model.
+os.environ["EMBEDDING_BACKEND"] = "fake"
+os.environ["EMBEDDING_WORKER_ENABLED"] = "false"
 
 from app.core.config import Settings  # noqa: E402
 from app.core.mail import EmailMessage  # noqa: E402
@@ -43,6 +47,9 @@ def make_settings(**overrides: object) -> Settings:
         "session_secret": TEST_SESSION_SECRET,
         "web_origin": WEB_ORIGIN,
         "allowed_email_domains": "northeastern.edu",
+        # Tests encode with the deterministic fake and drive the embedding worker explicitly.
+        "embedding_backend": "fake",
+        "embedding_worker_enabled": False,
         # Cheap hashing keeps the suite fast; production uses the defaults.
         "argon2_time_cost": 1,
         "argon2_memory_cost_kib": 1024,
@@ -66,6 +73,7 @@ def production_settings(**overrides: object) -> Settings:
         "web_origin": "https://hub.example",
         "mail_backend": "smtp",
         "smtp_host": "smtp.example.com",
+        "embedding_backend": "sentence-transformers",
     }
     values.update(overrides)
     return make_settings(**values)

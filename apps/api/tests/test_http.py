@@ -6,6 +6,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
+import app.main as main_module
 from app.core.config import Settings
 from app.main import create_app, create_http_app
 from tests.conftest import make_settings, production_settings
@@ -101,7 +102,34 @@ async def test_readiness_checks_the_database(client: httpx.AsyncClient) -> None:
     response = await client.get("/api/v1/health/ready")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "database": "ok"}
+    # The fixture's settings disable the worker, so this is "disabled" regardless of whether the
+    # lifespan ran (ASGITransport doesn't dispatch lifespan events on its own).
+    assert response.json() == {"status": "ok", "database": "ok", "embeddings": "disabled"}
+
+
+@pytest.mark.usefixtures("migrated")
+async def test_readiness_reports_embeddings_ok_once_the_worker_has_a_model() -> None:
+    settings = make_settings(embedding_worker_enabled=True, embedding_backend="fake")
+    http_app = create_http_app(settings)
+
+    async with http_app.router.lifespan_context(http_app), client_for(http_app) as client:
+        response = await client.get("/api/v1/health/ready")
+
+    assert response.json()["embeddings"] == "ok"
+
+
+@pytest.mark.usefixtures("migrated")
+async def test_readiness_reports_embeddings_unavailable_when_no_model_could_load(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(main_module, "create_encoder", lambda settings: None)
+    settings = make_settings(embedding_worker_enabled=True, embedding_backend="fake")
+    http_app = create_http_app(settings)
+
+    async with http_app.router.lifespan_context(http_app), client_for(http_app) as client:
+        response = await client.get("/api/v1/health/ready")
+
+    assert response.json()["embeddings"] == "unavailable"
 
 
 async def test_readiness_returns_503_quickly_when_the_database_is_down() -> None:

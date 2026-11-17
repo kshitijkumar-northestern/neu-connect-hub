@@ -280,3 +280,48 @@ def test_admin_mfa_max_age_seconds_bounds_are_refused(value: int) -> None:
 @pytest.mark.parametrize("value", [300, MAX_ADMIN_MFA_AGE_SECONDS])
 def test_admin_mfa_max_age_seconds_bounds_are_accepted(value: int) -> None:
     assert make_settings(admin_mfa_max_age_seconds=value).admin_mfa_max_age_seconds == value
+
+
+# --- embeddings -----------------------------------------------------------------------------
+
+
+def test_production_refuses_the_fake_embedding_backend() -> None:
+    with pytest.raises(ValidationError, match="EMBEDDING_BACKEND"):
+        production_settings(embedding_backend="fake")
+
+
+def test_production_accepts_the_sentence_transformers_backend() -> None:
+    assert production_settings().embedding_backend == "sentence-transformers"
+
+
+def test_non_production_allows_the_fake_embedding_backend() -> None:
+    assert make_settings(embedding_backend="fake").embedding_backend == "fake"
+
+
+@pytest.mark.parametrize("value", [0.09, 60.1])
+def test_embedding_poll_seconds_bounds_are_refused(value: float) -> None:
+    with pytest.raises(ValidationError, match="EMBEDDING_POLL_SECONDS"):
+        make_settings(embedding_poll_seconds=value)
+
+
+@pytest.mark.parametrize("value", [0.1, 60])
+def test_embedding_poll_seconds_bounds_are_accepted(value: float) -> None:
+    assert make_settings(embedding_poll_seconds=value).embedding_poll_seconds == value
+
+
+@pytest.mark.parametrize("value", [0, 129])
+def test_embedding_batch_size_bounds_are_refused(value: int) -> None:
+    with pytest.raises(ValidationError, match="EMBEDDING_BATCH_SIZE"):
+        make_settings(embedding_batch_size=value)
+
+
+@pytest.mark.parametrize("value", [1, 128])
+def test_embedding_batch_size_bounds_are_accepted(value: int) -> None:
+    assert make_settings(embedding_batch_size=value).embedding_batch_size == value
+
+
+def test_embedding_defaults_match_the_shipped_env_example() -> None:
+    settings = make_settings()
+    assert settings.embedding_model_id == "sentence-transformers/all-MiniLM-L6-v2"
+    assert settings.embedding_worker_enabled is False  # tests drive the worker explicitly
+    assert settings.embedding_backend == "fake"  # tests never load the real model

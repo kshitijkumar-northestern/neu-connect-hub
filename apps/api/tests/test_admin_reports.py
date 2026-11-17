@@ -462,6 +462,44 @@ async def test_suspending_locks_out_the_account_and_resolves_every_open_report(
         await target.close()
 
 
+async def test_suspending_deletes_the_targets_embedding(
+    app: object, mailer: MemoryMailer, clean_database: AsyncEngine
+) -> None:
+    """A suspended account must never keep a vector a stranger's search could still turn up,
+    and it shouldn't outlive the suspension either."""
+    admin = await make_admin(app, mailer, clean_database)
+    reporter = await student(app, mailer, "reporter@northeastern.edu")
+    target = await student(app, mailer, "target@northeastern.edu")
+    await target.put("/api/v1/me/profile", json=PROFILE)  # discoverable, so it would be matched
+    target_id = await user_id(target)
+    reporter_id = await user_id(reporter)
+    # discoverable already queues one via the profile save; upsert so the precondition holds
+    # either way, rather than coupling this test to that other pipeline's behaviour.
+    await execute(
+        clean_database,
+        "INSERT INTO embeddings (user_id, stale) VALUES (:id, true)"
+        " ON CONFLICT (user_id) DO UPDATE SET stale = true",
+        id=target_id,
+    )
+
+    await report(reporter, target_id, reason="spam")
+    report_id = await report_id_for(clean_database, reporter_id, target_id)
+
+    try:
+        response = await admin.post(f"/api/v1/admin/reports/{report_id}/suspend")
+        assert response.status_code == 200
+        assert (
+            await scalar(
+                clean_database, "SELECT count(*) FROM embeddings WHERE user_id = :id", id=target_id
+            )
+            == 0
+        )
+    finally:
+        await admin.aclose()
+        await reporter.aclose()
+        await target.aclose()
+
+
 async def test_suspending_an_administrator_is_refused(
     app: object, mailer: MemoryMailer, clean_database: AsyncEngine
 ) -> None:

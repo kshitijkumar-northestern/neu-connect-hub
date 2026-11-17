@@ -33,6 +33,12 @@ dev = [
   "pip-tools>=7.4",
 ]
 
+# The real embedding model. Install with the CPU-only PyTorch wheel (on Linux add
+# --extra-index-url https://download.pytorch.org/whl/cpu). Tests use a fake encoder instead.
+ml = [
+  "sentence-transformers>=3.0",
+]
+
 [tool.setuptools.packages.find]
 include = ["app*"]
 
@@ -71,6 +77,11 @@ files = ["app", "scripts"]
 [[tool.mypy.overrides]]
 # python-socketio ships no type information.
 module = ["socketio", "socketio.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# The ml extra is optional (CI doesn't install it), so the import must type-check either way.
+module = ["sentence_transformers", "sentence_transformers.*"]
 ignore_missing_imports = true
 
 [tool.bandit]

@@ -6,6 +6,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
+from app.ml.models import Embedding
 from app.modules.auth.models import User
 from app.modules.profiles.models import (
     GOALS,
@@ -92,6 +93,20 @@ class ProfileService:
         )
         for model in (ProfileSkill, ProfileInterest, AvailabilitySlot):
             await self.db.execute(delete(model).where(model.user_id == user_id))
+
+        # Discoverable profiles queue a re-encode; opting out purges the vector at once. Both
+        # happen in this same transaction, so a validation failure above leaves neither behind.
+        if data.discoverable:
+            await self.db.execute(
+                pg_insert(Embedding)
+                .values(user_id=user_id, stale=True, claimed_until=None, updated_at=func.now())
+                .on_conflict_do_update(
+                    index_elements=[Embedding.user_id],
+                    set_={"stale": True, "claimed_until": None, "updated_at": func.now()},
+                )
+            )
+        else:
+            await self.db.execute(delete(Embedding).where(Embedding.user_id == user_id))
 
         skill_rows: list[dict[str, Any]] = [
             {"user_id": user_id, "skill_id": skill_ids[slug], "kind": "has", "proficiency": level}

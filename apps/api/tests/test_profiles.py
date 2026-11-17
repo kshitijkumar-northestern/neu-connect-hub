@@ -1,5 +1,4 @@
 import asyncio
-import copy
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any
@@ -9,7 +8,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from tests.conftest import MemoryMailer
-from tests.helpers import PROFILE, execute, new_client, student, user_id
+from tests.helpers import PROFILE, execute, new_client, profile, student, user_id
 
 pytestmark = pytest.mark.usefixtures("clean_database")
 
@@ -28,12 +27,6 @@ PUBLIC_FIELDS = {
     "interests",
     "availability",
 }
-
-
-def profile(**changes: Any) -> dict[str, Any]:
-    body = copy.deepcopy(PROFILE)
-    body.update(changes)
-    return body
 
 
 def without_request_id(response: httpx.Response) -> dict[str, Any]:

@@ -1,6 +1,7 @@
 """Signing students up and in, shared by the API test modules."""
 
 import asyncio
+import copy
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
@@ -111,6 +112,13 @@ PROFILE: dict[str, Any] = {
     "discoverable": True,
     "feedback_consent": False,
 }
+
+
+def profile(**changes: Any) -> dict[str, Any]:
+    """A copy of `PROFILE` with the given fields overridden."""
+    body = copy.deepcopy(PROFILE)
+    body.update(changes)
+    return body
 
 
 @dataclass
