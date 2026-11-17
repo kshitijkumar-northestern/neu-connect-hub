@@ -98,8 +98,14 @@ export function Lobby({
           Connecting…
         </p>
       ) : null}
-      <Button type="button" disabled={joining} onClick={onJoin} className="self-start">
-        Join call
+      <Button
+        type="button"
+        disabled={joining || deviceCheck === "checking"}
+        aria-busy={deviceCheck === "checking"}
+        onClick={onJoin}
+        className="self-start"
+      >
+        {deviceCheck === "checking" ? "Starting camera…" : "Join call"}
       </Button>
     </section>
   );
