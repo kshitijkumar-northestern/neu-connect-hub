@@ -153,6 +153,24 @@ function applicationPath(projectId: string, applicationId: string, action: strin
   return projectPath(projectId, `/applications/${encodeURIComponent(applicationId)}/${action}`);
 }
 
+/** A student who could fill skills the team still lacks. Suggested only: nobody is added. */
+export interface TeamSuggestion {
+  user_id: string;
+  display_name: string;
+  headline: string;
+  /** The role with places left that they'd fit best. */
+  role: RoleRef;
+  /** Skills the team still needs that they'd bring, sorted by name. At least one. */
+  covers: NamedItem[];
+}
+
+export interface TeamSuggestions {
+  /** At most five, best first. Never a score. */
+  suggestions: TeamSuggestion[];
+  /** Needed skills nobody suggested brings, sorted by name. */
+  uncovered: NamedItem[];
+}
+
 export const projectsApi = {
   /** Open projects, newest first. */
   list: ({ limit, offset }: PageQuery = {}) => apiFetch<Page<ProjectSummary>>(`/projects${query({ limit, offset })}`),
@@ -182,4 +200,7 @@ export const projectsApi = {
   /** The signed-in student's own applications, newest first. */
   mine: ({ limit, offset }: PageQuery = {}) =>
     apiFetch<Page<MyApplication>>(`/me/applications${query({ limit, offset })}`),
+  /** Owner of an open project only (anything else is 404). 403 `discovery_opt_in_required` until
+   * the owner's own profile is discoverable, as in Discover. */
+  suggestions: (projectId: string) => apiFetch<TeamSuggestions>(projectPath(projectId, "/suggestions")),
 };

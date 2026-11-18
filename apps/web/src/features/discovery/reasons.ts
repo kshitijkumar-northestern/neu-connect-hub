@@ -5,7 +5,8 @@ import type { MatchReason } from "@/features/discovery/api";
 // How many names a card leads with before folding the rest into "+N more".
 const MAX_NAMES = 3;
 
-function listNames(items: readonly { name: string }[]): string {
+/** Up to three names, then "+N more": how cards list skills and interests. */
+export function listNames(items: readonly { name: string }[]): string {
   const names = items.map((item) => item.name);
   if (names.length <= MAX_NAMES) return names.join(", ");
   const shown = names.slice(0, MAX_NAMES);

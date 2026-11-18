@@ -334,3 +334,29 @@ def test_reasons_for_every_reason_kind_is_registered_and_values_come_from_candid
             assert reason.window.weekday == candidate_slot.weekday
             assert candidate_slot.start_min <= reason.window.start_min
             assert reason.window.end_min <= candidate_slot.end_min
+
+
+# -- score_pair ---------------------------------------------------------------------------------
+
+
+def test_score_pair_combines_the_given_semantic_with_the_rule_components() -> None:
+    """The one place a pair is scored: the ranker and the offline evaluation both call it, so
+    they can never drift apart."""
+    from app.ml.scoring import Overlap, OverlapWindow, PairScore, score_pair
+
+    viewer = features(seeking_skills=frozenset({UI}), goals=frozenset({"research"}))
+    candidate = features(has_skills=frozenset({UI, PYTHON}), goals=frozenset({"research"}))
+    overlap = Overlap(minutes=120, longest=OverlapWindow(weekday=1, start_min=600, end_min=720))
+
+    result = score_pair(viewer, candidate, frozenset({UI}), overlap, semantic=0.4)
+
+    assert isinstance(result, PairScore)
+    assert result.components == Components(
+        semantic=0.4, complementary=1.0, availability=0.5, goal=1.0
+    )
+    assert math.isclose(result.score, 0.35 * 0.4 + 0.30 * 1.0 + 0.25 * 0.5 + 0.10 * 1.0)
+    assert [reason.kind for reason in result.reasons] == [
+        "skills_covered",
+        "availability_overlap",
+        "shared_goals",
+    ]

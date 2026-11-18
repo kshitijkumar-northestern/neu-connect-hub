@@ -80,6 +80,15 @@ describe("DiscoverPage", () => {
     expect(await screen.findByRole("link", { name: "Grace Hopper" })).toBeInTheDocument();
   });
 
+  it("says to wait on a 429, with no retry that would only hit the limit again", async () => {
+    fakeApi({ "GET /me": [200, ADA], "GET /discovery": apiError(429, "rate_limited") });
+    renderApp("/discover");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Too many attempts. Wait a few minutes and try again.");
+    expect(screen.queryByText(/Check your connection/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+  });
+
   it("never renders a percentage anywhere on the page", async () => {
     fakeApi(discoveryRoutes([GRACE, KATHERINE]));
     renderApp("/discover");

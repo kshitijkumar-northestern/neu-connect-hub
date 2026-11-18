@@ -1,0 +1,73 @@
+{
+  "availability_target_minutes": 240,
+  "encoder": "sentence-transformers",
+  "k": 5,
+  "label_definition": {
+    "summary": "same hidden topic cluster, the candidate has at least one of the viewer's seeking skills, and at least 60 shared minutes in the viewer's reference week",
+    "version": "good-match-v1"
+  },
+  "labels": {
+    "best_ndcg_at_k": 0.7667,
+    "best_precision_at_k": 0.47,
+    "relevant_per_viewer": 2.6083,
+    "test_viewers_with_relevant": 92
+  },
+  "model_version": "sentence-transformers/all-MiniLM-L6-v2",
+  "reference_now": "2026-09-07T12:00:00+00:00",
+  "seed": 7,
+  "source": {
+    "clusters": [
+      "ml-research",
+      "web-apps",
+      "mobile",
+      "games",
+      "data-viz",
+      "security"
+    ],
+    "data": "synthetic: experiments/synthetic.py",
+    "n": 240
+  },
+  "split": {
+    "candidates_per_viewer": 239,
+    "dev_viewers": 120,
+    "test_viewers": 120
+  },
+  "systems": {
+    "embeddings_plus_rules": {
+      "constraint_rates": {
+        "both": 0.4283,
+        "enough_overlap": 0.4483,
+        "needed_skill": 0.98
+      },
+      "mean_shown": 5.0,
+      "ndcg_at_k": 0.4609,
+      "precision_at_k": 0.2983
+    },
+    "rules_only": {
+      "constraint_rates": {
+        "both": 0.3533,
+        "enough_overlap": 0.4133,
+        "needed_skill": 0.8817
+      },
+      "mean_shown": 5.0,
+      "ndcg_at_k": 0.3488,
+      "precision_at_k": 0.2317
+    },
+    "semantic_only": {
+      "constraint_rates": {
+        "both": 0.085,
+        "enough_overlap": 0.1633,
+        "needed_skill": 0.455
+      },
+      "mean_shown": 5.0,
+      "ndcg_at_k": 0.1117,
+      "precision_at_k": 0.0833
+    }
+  },
+  "weights": {
+    "availability": 0.25,
+    "complementary": 0.3,
+    "goal": 0.1,
+    "semantic": 0.35
+  }
+}

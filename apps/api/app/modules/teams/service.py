@@ -1,6 +1,6 @@
 import math
 import uuid
-from collections import Counter, defaultdict
+from collections import defaultdict
 from collections.abc import Sequence
 from typing import Literal, cast
 
@@ -11,8 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import AppError
 from app.core.rate_limit import Limit, RateLimiter
 from app.modules.chat.models import Conversation, ConversationMember
-from app.modules.profiles.models import Profile, ProfileSkill, Skill
-from app.modules.profiles.schemas import NamedItem
+from app.modules.profiles.models import Profile, Skill
 from app.modules.profiles.visibility import blocked_between
 from app.modules.teams.models import (
     PENDING_SQL,
@@ -22,6 +21,7 @@ from app.modules.teams.models import (
     ProjectRole,
     ProjectSkill,
 )
+from app.modules.teams.needs import team_needs
 from app.modules.teams.schemas import (
     Applicant,
     ApplicationOut,
@@ -179,29 +179,7 @@ class TeamService:
         if row is None:
             raise AppError(404, "not_found", NOT_FOUND)
         project, owner_name = row
-
-        roles = list(
-            await self.db.scalars(
-                select(ProjectRole)
-                .where(ProjectRole.project_id == project_id)
-                .order_by(ProjectRole.created_at, ProjectRole.id)
-            )
-        )
-        role_ids = [role.id for role in roles]
-        skill_rows = (
-            (
-                await self.db.execute(
-                    select(ProjectSkill.role_id, Skill.id, Skill.slug, Skill.name)
-                    .join(Skill, Skill.id == ProjectSkill.skill_id)
-                    .where(ProjectSkill.role_id.in_(role_ids))
-                )
-            ).all()
-            if role_ids
-            else []
-        )
-        skills_by_role: dict[uuid.UUID, list[tuple[int, str, str]]] = defaultdict(list)
-        for role_id, skill_id, slug, name in skill_rows:
-            skills_by_role[role_id].append((skill_id, slug, name))
+        needs = await team_needs(self.db, project_id)
 
         member_rows = (
             await self.db.execute(
@@ -222,45 +200,17 @@ class TeamService:
             )
         ).all()
         member_count = len(member_rows)
-        holders: Counter[uuid.UUID] = Counter(
-            row.role_id for row in member_rows if row.role_id is not None
-        )
-        role_titles = {role.id: role.title for role in roles}
-        remaining = {role.id: max(0, role.open_slots - holders.get(role.id, 0)) for role in roles}
-
+        role_titles = {role.id: role.title for role in needs.roles}
         role_out = [
             RoleDetail(
                 id=role.id,
                 title=role.title,
                 open_slots=role.open_slots,
-                remaining_slots=remaining[role.id],
-                skills=sorted(
-                    (
-                        NamedItem(slug=slug, name=name)
-                        for _, slug, name in skills_by_role.get(role.id, [])
-                    ),
-                    key=lambda item: item.name.casefold(),
-                ),
+                remaining_slots=role.room,
+                skills=list(role.skills),
             )
-            for role in roles
+            for role in needs.roles
         ]
-
-        has_skill_ids = set(
-            await self.db.scalars(
-                select(ProfileSkill.skill_id)
-                .join(ProjectMember, ProjectMember.user_id == ProfileSkill.user_id)
-                .where(ProjectMember.project_id == project_id, ProfileSkill.kind == "has")
-                .distinct()
-            )
-        )
-        missing_by_id: dict[int, NamedItem] = {}
-        for role in roles:
-            if remaining[role.id] <= 0:
-                continue
-            for skill_id, slug, name in skills_by_role.get(role.id, []):
-                if skill_id not in has_skill_ids:
-                    missing_by_id[skill_id] = NamedItem(slug=slug, name=name)
-        missing_skills = sorted(missing_by_id.values(), key=lambda item: item.name.casefold())
 
         visible_rows = [row for row in member_rows if not row.blocked]
 
@@ -310,7 +260,7 @@ class TeamService:
                 )
                 for row in visible_rows
             ],
-            missing_skills=missing_skills,
+            missing_skills=list(needs.missing),
             conversation_id=conversation_id,
             viewer_application=viewer_application,
             created_at=project.created_at,

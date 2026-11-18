@@ -33,6 +33,11 @@ htmlcov/
 # Model caches and experiment data (never committed)
 .cache/
 apps/api/experiments/data/
+# Evaluation reports: only the real-model reference pair is committed; runs with another seed,
+# size, cut or the fake encoder stay local. `/*`, not `/`, so the exceptions can re-include files.
+apps/api/experiments/reports/*
+!apps/api/experiments/reports/all-minilm-l6-v2-seed7-n240-k5.json
+!apps/api/experiments/reports/all-minilm-l6-v2-seed7-n240-k5.md
 
 # Dev mailbox (verification links contain tokens)
 apps/api/.dev-mail/
