@@ -1,9 +1,14 @@
-// Fails the production build if any backend configuration name reaches the browser bundle.
-// The names come from apps/api/.env.example, so new backend variables are covered automatically.
+// Post-build checks that fail the production build:
+// - any backend configuration name in the browser bundle (the names come from
+//   apps/api/.env.example, so new backend variables are covered automatically);
+// - a missing or unsound Content Security Policy in dist/index.html, including a connect-src
+//   that doesn't match the API_BASE_URL and SOCKET_URL the build used (see check-csp.mjs).
 // Usage: node scripts/check-bundle.mjs [distDir] [envExample]
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { cspProblems } from "./check-csp.mjs";
 
 /** Variable names declared in an env template (KEY=value lines). */
 export function readEnvNames(file) {
@@ -47,6 +52,22 @@ function main([distArg, envArg]) {
     process.exit(1);
   }
   console.log(`Bundle check passed: none of ${names.length} backend variable names appear in dist/.`);
+
+  const page = join(distDir, "index.html");
+  if (!existsSync(page)) {
+    console.error(`CSP check: ${page} does not exist.`);
+    process.exit(1);
+  }
+  // The same public values the build read (webpack.config.cjs): the shell wins over apps/web/.env.
+  const envFile = join(webRoot, ".env");
+  if (existsSync(envFile)) process.loadEnvFile(envFile);
+  const configured = { API_BASE_URL: process.env.API_BASE_URL, SOCKET_URL: process.env.SOCKET_URL };
+  const problems = cspProblems(readFileSync(page, "utf8"), configured);
+  if (problems.length > 0) {
+    for (const problem of problems) console.error(`CSP check: ${problem}`);
+    process.exit(1);
+  }
+  console.log("CSP check passed: inline script allowed by hash only; connect-src matches the configured URLs.");
 }
 
 // Compare real paths so the check still runs when the repo is reached through a symlink.

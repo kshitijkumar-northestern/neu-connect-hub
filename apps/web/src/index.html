@@ -6,8 +6,10 @@
     <title>NU Connect Hub</title>
     <!-- Applies the saved or system theme before first paint, so the wrong theme never flashes.
          Keep the key in sync with THEME_STORAGE_KEY in src/app/providers/ThemeProvider.tsx.
-         A Content Security Policy must allow this script by hash, computed from the built
-         dist/index.html: the production build minifies the script, so a source hash won't match. -->
+         The production Content Security Policy allows this script by the sha256 of its built
+         (minified) text: webpack.config.cjs computes it on every build, and the postbuild check
+         (scripts/check-csp.mjs) fails the build if the two ever disagree. It must stay the only
+         inline script, and keep id="theme-init". -->
     <script id="theme-init">
       (function () {
         var stored = null;

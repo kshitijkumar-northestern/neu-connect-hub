@@ -5,6 +5,9 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.datastructures import Headers, MutableHeaders
+from starlette.middleware.cors import CORSMiddleware
+from starlette.types import Message, Receive, Scope, Send
 
 from app.core.config import Settings
 from app.core.errors import AppError
@@ -18,6 +21,40 @@ SESSION_COOKIE = "nu_session"
 CSRF_COOKIE = "nu_csrf"
 CSRF_HEADER = "X-CSRF-Token"
 UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+# What the web app sends cross-origin when it runs on a sibling host of the API.
+CORS_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
+CORS_HEADERS = ("Content-Type", CSRF_HEADER)
+
+
+class WebOriginCORSMiddleware(CORSMiddleware):
+    """CORS for the web origin alone: its preflights are answered and its responses may be read
+    with credentials. A request from any other origin passes through with no CORS headers at
+    all (Starlette would still advertise the allowed methods and credentials to it), so its
+    preflight fails in the browser and the Origin and CSRF checks refuse its unsafe requests.
+
+    Configure it with an explicit list of origins only: never "*" and never a pattern.
+    """
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http":
+            origin = Headers(scope=scope).get("origin")
+            if origin is not None and not self.is_allowed_origin(origin):
+                await self.app(scope, receive, _vary_on_origin(send))
+                return
+        await super().__call__(scope, receive, send)
+
+
+def _vary_on_origin(send: Send) -> Send:
+    """The answer differs by Origin, so no cache may hand it to another origin."""
+
+    async def send_varying(message: Message) -> None:
+        if message["type"] == "http.response.start":
+            headers = MutableHeaders(scope=message)
+            if "origin" not in headers.get("vary", "").lower():
+                headers.add_vary_header("Origin")
+        await send(message)
+
+    return send_varying
 
 
 async def require_trusted_origin(request: Request) -> None:
