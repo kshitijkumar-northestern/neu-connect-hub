@@ -7,6 +7,7 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from app.modules.profiles.service import SAVES_PER_USER
 from tests.conftest import MemoryMailer
 from tests.helpers import PROFILE, execute, new_client, profile, student, user_id
 
@@ -340,3 +341,69 @@ async def test_unverified_students_cannot_view_profiles(
         assert response.json()["error"]["code"] == "verification_required"
     finally:
         await client.aclose()
+
+
+# --- rate limits ----------------------------------------------------------------------------
+
+
+async def test_profile_saves_are_rate_limited_per_student(
+    ada: httpx.AsyncClient, grace: httpx.AsyncClient
+) -> None:
+    for _ in range(SAVES_PER_USER.max_events):
+        assert (await ada.put("/api/v1/me/profile", json=PROFILE)).status_code == 200
+
+    limited = await ada.put("/api/v1/me/profile", json=profile(display_name="Not Saved"))
+    assert limited.status_code == 429
+    assert limited.json()["error"]["code"] == "rate_limited"
+    assert int(limited.headers["Retry-After"]) >= 1
+
+    # The refused save changed nothing, reading is never limited, and the limit is per student.
+    assert (await ada.get("/api/v1/me/profile")).json()["display_name"] == PROFILE["display_name"]
+    assert (await grace.put("/api/v1/me/profile", json=PROFILE)).status_code == 200
+
+
+async def use_up_saves(client: httpx.AsyncClient, **changes: Any) -> None:
+    for _ in range(SAVES_PER_USER.max_events):
+        response = await client.put("/api/v1/me/profile", json=profile(**changes))
+        assert response.status_code == 200, response.text
+    assert (await client.put("/api/v1/me/profile", json=profile(**changes))).status_code == 429
+
+
+async def test_a_student_at_the_save_limit_can_still_hide(ada: httpx.AsyncClient) -> None:
+    """Hiding is the privacy action the limit must never stand in the way of, and it doesn't
+    count: it purges the embedding rather than queueing an encode."""
+    await use_up_saves(ada, discoverable=True)
+
+    hidden = await ada.put("/api/v1/me/profile", json=profile(discoverable=False))
+    assert hidden.status_code == 200, hidden.text
+    assert hidden.json()["discoverable"] is False
+
+    # Showing it again adds exposure, so it's limited as before; staying hidden while editing
+    # reduces nothing, so it's limited too.
+    shown = await ada.put("/api/v1/me/profile", json=profile(discoverable=True))
+    assert shown.status_code == 429
+    edited = await ada.put("/api/v1/me/profile", json=profile(discoverable=False, bio="New"))
+    assert edited.status_code == 429
+
+
+async def test_a_student_at_the_save_limit_can_still_withdraw_feedback_consent(
+    ada: httpx.AsyncClient,
+) -> None:
+    await use_up_saves(ada, feedback_consent=True)
+
+    withdrawn = await ada.put("/api/v1/me/profile", json=profile(feedback_consent=False))
+    assert withdrawn.status_code == 200, withdrawn.text
+    assert withdrawn.json()["feedback_consent"] is False
+
+    regranted = await ada.put("/api/v1/me/profile", json=profile(feedback_consent=True))
+    assert regranted.status_code == 429
+
+
+async def test_saves_that_fail_validation_do_not_count_toward_the_limit(
+    ada: httpx.AsyncClient,
+) -> None:
+    unknown_skill = profile(skills=[{"slug": "not-a-real-skill", "level": "beginner"}])
+    for _ in range(3):
+        assert (await ada.put("/api/v1/me/profile", json=unknown_skill)).status_code == 422
+
+    await use_up_saves(ada)

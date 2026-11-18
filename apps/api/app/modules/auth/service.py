@@ -1,3 +1,4 @@
+import logging
 import math
 import uuid
 from dataclasses import dataclass
@@ -34,6 +35,41 @@ INVALID_CREDENTIALS = "Email or password is incorrect."
 INVALID_LINK = "This link is invalid or has expired. Request a new one."
 
 SingleUseToken = EmailVerification | PasswordReset
+
+logger = logging.getLogger("app.accounts")
+
+
+async def erase_account(db: AsyncSession, user_id: uuid.UUID) -> bool:
+    """Erases the account and everything the database cascades from it, and commits. The one
+    erasure path: DELETE /me runs it once the password checks out, and the operator's
+    delete_account command runs it for a student who can't sign in. False if there was no such
+    account, e.g. because a concurrent deletion got there first.
+
+    Each deletion is logged with the account id and nothing else: it's the record a database
+    restore needs to re-apply deletions made after its backup was taken."""
+    conversation_ids = list(
+        await db.scalars(
+            select(ConversationMember.conversation_id).where(ConversationMember.user_id == user_id)
+        )
+    )
+    # Their messages become tombstones ("message removed") for the other members; the author
+    # column is cleared by the foreign key when the account goes.
+    await db.execute(
+        update(Message).where(Message.author_id == user_id).values(body=None, removed_at=func.now())
+    )
+    deleted = await db.scalar(delete(User).where(User.id == user_id).returning(User.id))
+    # A conversation nobody is left in goes too, with its messages.
+    await db.execute(
+        delete(Conversation).where(
+            Conversation.id.in_(conversation_ids),
+            ~exists().where(ConversationMember.conversation_id == Conversation.id),
+        )
+    )
+    await db.commit()
+    if deleted is None:
+        return False
+    logger.info("Account deleted", extra={"user_id": str(user_id)})
+    return True
 
 
 @dataclass(frozen=True)
@@ -158,29 +194,7 @@ class AuthService:
         self._limit("delete-account", str(user.id), ACCOUNT_DELETION_ATTEMPTS)
         if not await self.passwords.verify(user.password_hash, password):
             raise AppError(403, "password_incorrect", "That password isn't right.")
-        conversation_ids = list(
-            await self.db.scalars(
-                select(ConversationMember.conversation_id).where(
-                    ConversationMember.user_id == user.id
-                )
-            )
-        )
-        # Their messages become tombstones ("message removed") for the other members; the
-        # author column is cleared by the foreign key when the account goes.
-        await self.db.execute(
-            update(Message)
-            .where(Message.author_id == user.id)
-            .values(body=None, removed_at=func.now())
-        )
-        await self.db.execute(delete(User).where(User.id == user.id))
-        # A conversation nobody is left in goes too, with its messages.
-        await self.db.execute(
-            delete(Conversation).where(
-                Conversation.id.in_(conversation_ids),
-                ~exists().where(ConversationMember.conversation_id == Conversation.id),
-            )
-        )
-        await self.db.commit()
+        await erase_account(self.db, user.id)
 
     # --- password reset ---------------------------------------------------------------------
 
