@@ -2,12 +2,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
 import { Button } from "@/components/ui/button";
+import { errorMessage } from "@/features/auth/errors";
 import { discoveryApi, type Match } from "@/features/discovery/api";
 import { MatchCard } from "@/features/discovery/components/MatchCard";
 import { ScanCodeDialog } from "@/features/scan/components/ScanCodeDialog";
 import { ApiError } from "@/lib/http";
 
-type LoadState = "loading" | "opt-in" | "students-only" | "error" | "ready";
+/** "rate-limited" is a 429, where retrying straight away would only hit the limit again. */
+type LoadState = "loading" | "opt-in" | "students-only" | "rate-limited" | "error" | "ready";
 
 /** Where focus goes next after a card is dismissed: another card's name link, or the page
  * heading when none remain. */
@@ -16,6 +18,7 @@ type FocusTarget = { kind: "card"; userId: string } | { kind: "heading" };
 export function DiscoverPage() {
   const [load, setLoad] = useState<LoadState>("loading");
   const [matches, setMatches] = useState<Match[]>([]);
+  const [rateLimitMessage, setRateLimitMessage] = useState<string>();
   const [scanOpen, setScanOpen] = useState(false);
 
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -44,6 +47,9 @@ export function DiscoverPage() {
           setLoad("opt-in");
         } else if (failure instanceof ApiError && failure.status === 403 && failure.code === "discovery_students_only") {
           setLoad("students-only");
+        } else if (failure instanceof ApiError && failure.status === 429) {
+          setRateLimitMessage(errorMessage(failure));
+          setLoad("rate-limited");
         } else {
           setLoad("error");
         }
@@ -130,6 +136,15 @@ export function DiscoverPage() {
       <section className="flex flex-col gap-6">
         {heading}
         <p className="text-muted-foreground">Discovery is for student accounts.</p>
+      </section>
+    );
+  }
+
+  if (load === "rate-limited") {
+    return (
+      <section className="flex flex-col gap-6">
+        {heading}
+        <p role="alert">{rateLimitMessage}</p>
       </section>
     );
   }
