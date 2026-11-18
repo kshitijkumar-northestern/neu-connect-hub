@@ -2,6 +2,7 @@
 
 import asyncio
 import copy
+import itertools
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
@@ -119,6 +120,52 @@ def profile(**changes: Any) -> dict[str, Any]:
     body = copy.deepcopy(PROFILE)
     body.update(changes)
     return body
+
+
+# Matching scenarios sign up more students in one test than the registration limit allows from a
+# single address, so each of these students comes from an address of its own.
+_addresses = itertools.count(1)
+
+
+def fresh_ip() -> str:
+    n = next(_addresses)
+    return f"10.{(n >> 16) & 255}.{(n >> 8) & 255}.{n & 255}"
+
+
+async def student_with_profile(
+    app: object, mailer: MemoryMailer, email: str, **changes: Any
+) -> httpx.AsyncClient:
+    """A verified, signed-in student who saved `PROFILE` with `changes` applied (discoverable by
+    default), named after their address unless `changes` names them."""
+    client = client_from(app, fresh_ip())
+    await register(client, email)
+    await verify_last(client, mailer)
+    response = await login(client, email)
+    assert response.status_code == 200, response.text
+    client.headers.update(csrf(client))
+    name = email.split("@")[0].title()
+    saved = await client.put(
+        "/api/v1/me/profile", json=profile(**{"display_name": name, **changes})
+    )
+    assert saved.status_code == 200, saved.text
+    return client
+
+
+async def unverify(engine: AsyncEngine, uid: str) -> None:
+    await execute(engine, "UPDATE users SET verified_at = NULL WHERE id = :id", id=uid)
+
+
+async def suspend(engine: AsyncEngine, uid: str) -> None:
+    await execute(engine, "UPDATE users SET suspended_at = now() WHERE id = :id", id=uid)
+
+
+async def make_admin(engine: AsyncEngine, uid: str) -> None:
+    await execute(engine, "UPDATE users SET role = 'admin' WHERE id = :id", id=uid)
+
+
+async def block(blocker: httpx.AsyncClient, target_id: str) -> None:
+    response = await blocker.post("/api/v1/blocks", json={"user_id": target_id})
+    assert response.status_code == 204, response.text
 
 
 @dataclass

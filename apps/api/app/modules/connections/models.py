@@ -8,7 +8,8 @@ from app.db.base import Base
 
 CONNECTION_STATES = ("pending", "accepted", "declined", "withdrawn", "ended")
 # The states that count as "already connected or asked", one per pair of students.
-OPEN_STATES_SQL = "state IN ('pending', 'accepted')"
+OPEN_STATES = ("pending", "accepted")
+OPEN_STATES_SQL = f"state IN ({', '.join(repr(s) for s in OPEN_STATES)})"
 
 
 class Connection(Base):
