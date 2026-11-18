@@ -6,18 +6,17 @@ gone invisible by the time the card query runs), and records feedback only when 
 consented and the candidate is still visible to them.
 """
 
-import math
 import uuid
 from collections.abc import Collection
 from typing import cast
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
-from app.core.rate_limit import Limit, RateLimiter
+from app.core.rate_limit import Limit, RateLimiter, enforce
 from app.ml.scoring import (
     AvailabilityOverlap,
     Item,
@@ -40,16 +39,11 @@ from app.modules.discovery.schemas import (
     SharedInterestsOut,
     SkillsCoveredOut,
 )
-from app.modules.profiles.models import Profile, ProfileSkill, Skill
+from app.modules.profiles.models import Profile
 from app.modules.profiles.schemas import Goal, NamedItem
 from app.modules.profiles.visibility import visible_to
-from app.modules.teams.models import (
-    Application,
-    Project,
-    ProjectMember,
-    ProjectRole,
-    ProjectSkill,
-)
+from app.modules.teams.models import Application, Project
+from app.modules.teams.needs import team_needs
 
 DISCOVERY_PER_USER = Limit(max_events=30, window_seconds=60)
 
@@ -174,60 +168,7 @@ class DiscoveryService:
         if project is None or project.owner_id != viewer_id or project.status != "open":
             raise AppError(404, "not_found", PROJECT_NOT_FOUND)
 
-        member_ids = set(
-            await self.db.scalars(
-                select(ProjectMember.user_id).where(ProjectMember.project_id == project_id)
-            )
-        )
-        # A role only counts toward "missing" while it still has room: the same remaining-slots
-        # shape teams/service.py uses (holders per role_id, grouped), compared against open_slots.
-        holder_counts = dict(
-            (
-                await self.db.execute(
-                    select(ProjectMember.role_id, func.count())
-                    .where(
-                        ProjectMember.project_id == project_id,
-                        ProjectMember.role_id.is_not(None),
-                    )
-                    .group_by(ProjectMember.role_id)
-                )
-            ).all()
-        )
-        roles = (
-            await self.db.execute(
-                select(ProjectRole.id, ProjectRole.open_slots).where(
-                    ProjectRole.project_id == project_id
-                )
-            )
-        ).all()
-        unfilled_role_ids = {
-            role_id for role_id, open_slots in roles if open_slots > holder_counts.get(role_id, 0)
-        }
-
-        role_skill_slugs = (
-            set(
-                await self.db.scalars(
-                    select(Skill.slug)
-                    .join(ProjectSkill, ProjectSkill.skill_id == Skill.id)
-                    .where(ProjectSkill.role_id.in_(unfilled_role_ids))
-                )
-            )
-            if unfilled_role_ids
-            else set()
-        )
-        has_slugs = (
-            set(
-                await self.db.scalars(
-                    select(Skill.slug)
-                    .join(ProfileSkill, ProfileSkill.skill_id == Skill.id)
-                    .where(ProfileSkill.user_id.in_(member_ids), ProfileSkill.kind == "has")
-                )
-            )
-            if member_ids
-            else set()
-        )
-        needed_skills = frozenset(role_skill_slugs - has_slugs)
-
+        needs = await team_needs(self.db, project_id)
         applicant_ids = set(
             await self.db.scalars(
                 select(Application.applicant_id).where(
@@ -235,7 +176,7 @@ class DiscoveryService:
                 )
             )
         )
-        return needed_skills, member_ids | applicant_ids
+        return needs.missing_slugs, set(needs.member_ids) | applicant_ids
 
     async def _cards(
         self, viewer_id: uuid.UUID, recommendations: list[Recommendation]
@@ -270,11 +211,4 @@ class DiscoveryService:
         return cards
 
     def _limit(self, viewer_id: uuid.UUID) -> None:
-        retry_after = self.limiter.hit("discovery", str(viewer_id), DISCOVERY_PER_USER)
-        if retry_after is not None:
-            raise AppError(
-                429,
-                "rate_limited",
-                RATE_LIMITED,
-                headers={"Retry-After": str(max(1, math.ceil(retry_after)))},
-            )
+        enforce(self.limiter, "discovery", str(viewer_id), DISCOVERY_PER_USER, RATE_LIMITED)

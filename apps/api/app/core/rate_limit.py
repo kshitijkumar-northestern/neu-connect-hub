@@ -4,10 +4,13 @@ State lives in this process only, which is correct while the API runs as a singl
 Moving to several workers means moving this to a shared store along with Socket.IO rooms.
 """
 
+import math
 import time
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
+
+from app.core.errors import AppError
 
 DEFAULT_PRUNE_THRESHOLD = 10_000
 
@@ -77,3 +80,16 @@ class RateLimiter:
             del self._events[key]
         # Prune again only after the table doubles, so pruning stays amortised O(1) per hit.
         self._prune_above = max(self._threshold, 2 * len(self._events))
+
+
+def enforce(limiter: RateLimiter, bucket: str, key: str, limit: Limit, message: str) -> None:
+    """Records an event, or refuses it with the 429 every rate-limited route answers with: a
+    whole number of seconds to wait in Retry-After, never 0."""
+    retry_after = limiter.hit(bucket, key, limit)
+    if retry_after is not None:
+        raise AppError(
+            429,
+            "rate_limited",
+            message,
+            headers={"Retry-After": str(max(1, math.ceil(retry_after)))},
+        )

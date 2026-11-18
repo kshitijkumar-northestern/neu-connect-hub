@@ -223,3 +223,33 @@ def reasons_for(
         reasons.append(SharedGoals(goals=shared_goals))
 
     return tuple(reasons)
+
+
+@dataclass(frozen=True)
+class PairScore:
+    score: float
+    components: Components
+    reasons: tuple[Reason, ...]
+
+
+def score_pair(
+    viewer: MatchFeatures,
+    candidate: MatchFeatures,
+    needed: frozenset[Item],
+    overlap: Overlap,
+    semantic: float,
+) -> PairScore:
+    """Scores one pair from an already-decided semantic component (embedding similarity, or the
+    interest fallback). The ranker and the offline evaluation both score through here, so what
+    is evaluated is exactly what students are shown."""
+    components = Components(
+        semantic=semantic,
+        complementary=complementary_component(needed, candidate.has_skills),
+        availability=availability_component(overlap),
+        goal=goal_component(viewer.goals, candidate.goals),
+    )
+    return PairScore(
+        score=combine(components),
+        components=components,
+        reasons=reasons_for(viewer, candidate, needed, overlap),
+    )

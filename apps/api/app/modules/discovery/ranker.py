@@ -23,25 +23,20 @@ from app.ml.scoring import (
     Item,
     MatchFeatures,
     Reason,
-    WeeklySlot,
-    availability_component,
-    combine,
-    complementary_component,
-    goal_component,
     interest_component,
-    reasons_for,
+    score_pair,
     semantic_component,
 )
 from app.modules.auth.models import User
 from app.modules.discovery.eligibility import candidate_filter, viewer_eligible
 from app.modules.profiles.models import (
-    AvailabilitySlot,
     Interest,
     Profile,
     ProfileInterest,
     ProfileSkill,
     Skill,
 )
+from app.modules.profiles.slots import load_slots
 
 logger = logging.getLogger("app.ml")
 
@@ -130,21 +125,15 @@ class Ranker:
             )
             if fallback is not None:
                 fallback_counts[fallback] += 1
-            components = Components(
-                semantic=semantic,
-                complementary=complementary_component(needed, candidate.has_skills),
-                availability=availability_component(overlap),
-                goal=goal_component(viewer_features.goals, candidate.goals),
-            )
-            reasons = reasons_for(viewer_features, candidate, needed, overlap)
-            if not reasons:
+            pair = score_pair(viewer_features, candidate, needed, overlap, semantic)
+            if not pair.reasons:
                 continue
             scored.append(
                 Recommendation(
                     user_id=row.user_id,
-                    score=combine(components),
-                    components=components,
-                    reasons=reasons,
+                    score=pair.score,
+                    components=pair.components,
+                    reasons=pair.reasons,
                     fallback=fallback,
                 )
             )
@@ -285,14 +274,7 @@ class Ranker:
         for user_id, slug, name in interest_rows:
             interests[user_id].add(Item(slug=slug, name=name))
 
-        slots: dict[uuid.UUID, list[WeeklySlot]] = defaultdict(list)
-        slot_rows = await self._session.execute(
-            select(AvailabilitySlot).where(AvailabilitySlot.user_id.in_(ids))
-        )
-        for slot in slot_rows.scalars():
-            slots[slot.user_id].append(
-                WeeklySlot(weekday=slot.weekday, start_min=slot.start_min, end_min=slot.end_min)
-            )
+        slots = await load_slots(self._session, ids)
 
         return {
             user_id: MatchFeatures(
