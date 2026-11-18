@@ -61,6 +61,7 @@ async def test_the_reference_scan_covers_every_account_table() -> None:
         "profile_interests",
         "availability_slots",
         "embeddings",
+        "match_feedback",
         "blocks",
         "reports",
         "connections",

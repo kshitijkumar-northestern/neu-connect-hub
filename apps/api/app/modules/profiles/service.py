@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import AppError
 from app.ml.models import Embedding
 from app.modules.auth.models import User
+from app.modules.discovery.models import MatchFeedback
 from app.modules.profiles.models import (
     GOALS,
     LEVELS,
@@ -107,6 +108,11 @@ class ProfileService:
             )
         else:
             await self.db.execute(delete(Embedding).where(Embedding.user_id == user_id))
+
+        # Feedback is kept only while the viewer both consents and stays discoverable; losing
+        # either purges what they left behind, in this same transaction.
+        if not data.feedback_consent or not data.discoverable:
+            await self.db.execute(delete(MatchFeedback).where(MatchFeedback.viewer_id == user_id))
 
         skill_rows: list[dict[str, Any]] = [
             {"user_id": user_id, "skill_id": skill_ids[slug], "kind": "has", "proficiency": level}

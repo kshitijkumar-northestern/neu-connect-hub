@@ -15,6 +15,7 @@ import { SignInPage } from "@/features/auth/pages/SignInPage";
 import { VerifyEmailPage } from "@/features/auth/pages/VerifyEmailPage";
 import { RequireAuth, RequireVerified } from "@/features/auth/guards";
 import { ConnectionsPage } from "@/features/connections/pages/ConnectionsPage";
+import { DiscoverPage } from "@/features/discovery/pages/DiscoverPage";
 import { SocketProvider } from "@/features/messages/SocketProvider";
 import { ConversationsPage } from "@/features/messages/pages/ConversationsPage";
 import { ThreadPage } from "@/features/messages/pages/ThreadPage";
@@ -57,6 +58,14 @@ export const routes: RouteObject[] = [
         element: (
           <RequireVerified>
             <PublicProfilePage />
+          </RequireVerified>
+        ),
+      },
+      {
+        path: "discover",
+        element: (
+          <RequireVerified>
+            <DiscoverPage />
           </RequireVerified>
         ),
       },

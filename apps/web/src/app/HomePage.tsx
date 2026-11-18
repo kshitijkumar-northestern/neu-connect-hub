@@ -39,9 +39,14 @@ export function HomePage() {
             Signed in as <strong>{state.user.email}</strong>.
           </p>
           {state.user.verified ? (
-            <Link className="text-sm underline underline-offset-4" to="/profile">
-              Edit your profile
-            </Link>
+            <div className="flex flex-wrap gap-4">
+              <Link className="text-sm underline underline-offset-4" to="/discover">
+                Find collaborators
+              </Link>
+              <Link className="text-sm underline underline-offset-4" to="/profile">
+                Edit your profile
+              </Link>
+            </div>
           ) : null}
           {state.user.verified ? null : (
             <div className="flex max-w-sm flex-col gap-3">
