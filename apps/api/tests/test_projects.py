@@ -1289,3 +1289,18 @@ async def test_patch_waits_for_a_project_row_locked_for_share(
         assert not task.done()
     response = await task
     assert response.status_code == 200, response.text
+
+
+async def test_roles_keep_the_order_they_were_entered_in(ada: httpx.AsyncClient) -> None:
+    """Roles saved in one request used to share a timestamp, so the page fell back to their
+    random ids. Five roles in three projects make a lucky pass vanishingly unlikely."""
+    titles = [f"Role {n}" for n in range(1, 6)]
+    for _ in range(3):
+        created = await created_project(
+            ada,
+            capacity=10,
+            roles=[{"title": title, "open_slots": 1, "skills": []} for title in titles],
+        )
+        assert [role["title"] for role in created["roles"]] == titles
+        detail = (await ada.get(f"/api/v1/projects/{created['id']}")).json()
+        assert [role["title"] for role in detail["roles"]] == titles

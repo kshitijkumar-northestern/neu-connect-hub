@@ -79,7 +79,11 @@ class ProjectRole(Base):
     )
     title: Mapped[str] = mapped_column(String(ROLE_TITLE_MAX))
     open_slots: Mapped[int] = mapped_column(SmallInteger)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # The wall clock at insert, not the transaction start: roles saved in one request then keep
+    # the order they were entered in, which is the order the project page lists them.
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.clock_timestamp()
+    )
 
 
 class ProjectSkill(Base):
