@@ -1,6 +1,7 @@
 """Import every model module here so Alembic autogenerate sees the full metadata."""
 
 from app.db.base import Base
+from app.ml import models as ml_models
 from app.modules.admin import models as admin_models
 from app.modules.auth import models as auth_models
 from app.modules.chat import models as chat_models
@@ -16,6 +17,7 @@ __all__ = [
     "auth_models",
     "chat_models",
     "connection_models",
+    "ml_models",
     "profile_models",
     "room_models",
     "scan_models",

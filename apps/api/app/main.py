@@ -1,5 +1,7 @@
 """ASGI composition: FastAPI for HTTP, wrapped by Python Socket.IO."""
 
+import asyncio
+import contextlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -14,6 +16,8 @@ from app.core.logging import configure_logging
 from app.core.mail import Mailer, create_mailer
 from app.core.rate_limit import RateLimiter
 from app.db.session import create_database
+from app.ml.encoders import create_encoder
+from app.ml.worker import EmbeddingWorker
 from app.modules.auth.passwords import PasswordService
 from app.realtime.calls import CallRegistry
 from app.realtime.presence import Presence
@@ -25,8 +29,22 @@ def create_http_app(settings: Settings, *, mailer: Mailer | None = None) -> Fast
     database = create_database(settings)
 
     @asynccontextmanager
-    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        # The encoder (and the real model behind it) is built here, not at app-construction
+        # time, and only when the worker is enabled: importing or building the app must never
+        # load the model, so a web-only replica that never runs the worker never pays for it.
+        task: asyncio.Task[None] | None = None
+        if settings.embedding_worker_enabled:
+            encoder = create_encoder(settings)
+            if encoder is not None:
+                worker = EmbeddingWorker(database, encoder, settings)
+                app.state.embedding_worker = worker
+                task = asyncio.create_task(worker.run_forever())
         yield
+        if task is not None:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
         await database.engine.dispose()
 
     docs_enabled = not settings.is_production
@@ -40,6 +58,9 @@ def create_http_app(settings: Settings, *, mailer: Mailer | None = None) -> Fast
     )
     app.state.settings = settings
     app.state.db = database
+    # Set for real by the lifespan, only when enabled and a model actually loads; readiness and
+    # tests read this directly.
+    app.state.embedding_worker = None
     app.state.mailer = mailer or create_mailer(settings)
     app.state.passwords = PasswordService(settings)
     app.state.limiter = RateLimiter()

@@ -21,7 +21,8 @@ async def health() -> dict[str, str]:
 
 @router.get("/health/ready")
 async def ready(request: Request) -> dict[str, str]:
-    """Readiness: the database answers within the configured timeout."""
+    """Readiness: the database answers within the configured timeout. Embeddings are reported
+    but never gate readiness: an optional feature being unavailable isn't an outage."""
     settings: Settings = request.app.state.settings
     database: Database = request.app.state.db
     try:
@@ -31,4 +32,11 @@ async def ready(request: Request) -> dict[str, str]:
     except Exception as exc:
         logger.warning("Readiness check failed", extra={"reason": type(exc).__name__})
         raise AppError(503, "not_ready", "The service is not ready.") from exc
-    return {"status": "ok", "database": "ok"}
+    return {"status": "ok", "database": "ok", "embeddings": _embeddings_status(request)}
+
+
+def _embeddings_status(request: Request) -> str:
+    settings: Settings = request.app.state.settings
+    if not settings.embedding_worker_enabled:
+        return "disabled"
+    return "ok" if request.app.state.embedding_worker is not None else "unavailable"

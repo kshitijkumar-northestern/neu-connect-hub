@@ -1,8 +1,11 @@
+from typing import Any
+
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.core.config import Settings
+from app.modules.profiles.schemas import ProfileInput
 from scripts.seed_demo import DEMO_DOMAIN, seed
 from tests.conftest import production_settings
 from tests.helpers import login, new_client
@@ -86,3 +89,114 @@ async def test_demo_students_can_sign_in(app: object, settings: Settings) -> Non
 async def test_seeding_refuses_production() -> None:
     with pytest.raises(SystemExit, match="production"):
         await seed(production_settings(), count=2, password=DEMO_PASSWORD)
+
+
+async def test_seeded_profiles_validate_and_have_no_overlapping_availability(
+    settings: Settings, clean_database: AsyncEngine
+) -> None:
+    """Verify that all seeded students' profiles pass ProfileInput validation and that
+    no two availability slots overlap on the same weekday."""
+    await seed(settings, count=40, password=DEMO_PASSWORD)
+
+    # Query all profiles, skills, interests, and availability slots
+    async with clean_database.begin() as connection:
+        profiles_result = await connection.execute(
+            text(
+                "SELECT user_id, display_name, headline, bio, goals, timezone,"
+                " discoverable, feedback_consent FROM profiles ORDER BY user_id"
+            )
+        )
+        profiles = profiles_result.all()
+
+        # Map skill_id to slug for each student
+        skills_result = await connection.execute(
+            text(
+                "SELECT ps.user_id, s.slug, ps.kind, ps.proficiency FROM profile_skills ps "
+                "JOIN skills s ON s.id = ps.skill_id ORDER BY ps.user_id, s.slug"
+            )
+        )
+        skills_by_user: dict[Any, dict[str, list[Any]]] = {}
+        for user_id, slug, kind, proficiency in skills_result:
+            if user_id not in skills_by_user:
+                skills_by_user[user_id] = {"has": [], "seeking": []}
+            if kind == "has":
+                level = ["beginner", "intermediate", "advanced"][proficiency - 1]
+                skills_by_user[user_id]["has"].append({"slug": slug, "level": level})
+            else:
+                skills_by_user[user_id]["seeking"].append(slug)
+
+        # Map interest_id to slug for each student
+        interests_result = await connection.execute(
+            text(
+                "SELECT pi.user_id, i.slug FROM profile_interests pi "
+                "JOIN interests i ON i.id = pi.interest_id ORDER BY pi.user_id, i.slug"
+            )
+        )
+        interests_by_user: dict[Any, list[Any]] = {}
+        for user_id, slug in interests_result:
+            if user_id not in interests_by_user:
+                interests_by_user[user_id] = []
+            interests_by_user[user_id].append(slug)
+
+        # Get availability slots for each student
+        slots_result = await connection.execute(
+            text(
+                "SELECT user_id, weekday, start_min, end_min FROM availability_slots"
+                " ORDER BY user_id, weekday, start_min"
+            )
+        )
+        slots_by_user: dict[Any, list[dict[str, Any]]] = {}
+        for user_id, weekday, start_min, end_min in slots_result:
+            if user_id not in slots_by_user:
+                slots_by_user[user_id] = []
+            slots_by_user[user_id].append(
+                {"weekday": weekday, "start_min": start_min, "end_min": end_min}
+            )
+
+    # Validate each profile
+    for profile_row in profiles:
+        (
+            user_id,
+            display_name,
+            headline,
+            bio,
+            goals,
+            timezone,
+            discoverable,
+            feedback_consent,
+        ) = profile_row
+
+        # Check for overlapping slots on the same weekday
+        slots = slots_by_user.get(user_id, [])
+        for i, slot1 in enumerate(slots):
+            for slot2 in slots[i + 1 :]:
+                if slot1["weekday"] == slot2["weekday"]:
+                    overlap = (
+                        slot1["start_min"] < slot2["end_min"]
+                        and slot2["start_min"] < slot1["end_min"]
+                    )
+                    if overlap:
+                        pytest.fail(
+                            f"User {user_id} has overlapping slots on"
+                            f" weekday {slot1['weekday']}: "
+                            f"{slot1['start_min']}-{slot1['end_min']} and "
+                            f"{slot2['start_min']}-{slot2['end_min']}"
+                        )
+
+        # Build ProfileInput dict
+        profile_input = ProfileInput(
+            display_name=display_name,
+            headline=headline or "",
+            bio=bio or "",
+            goals=list(goals) if goals else [],
+            timezone=timezone,
+            skills=skills_by_user.get(user_id, {}).get("has", []),
+            seeking_skills=skills_by_user.get(user_id, {}).get("seeking", []),
+            interests=interests_by_user.get(user_id, []),
+            availability=slots,
+            discoverable=discoverable,
+            feedback_consent=feedback_consent,
+        )
+
+        # If we got here, validation passed (ProfileInput constructor validates on construction)
+        assert profile_input is not None

@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     web_origin: str = "http://localhost:8080"
     email_provider_api_key: SecretStr | None = None
     embedding_model_id: str = "sentence-transformers/all-MiniLM-L6-v2"
+    # Profile embeddings are computed by a background worker, never during a request. "fake" is a
+    # deterministic encoder for tests; production needs the real model (the `ml` extra).
+    embedding_backend: Literal["sentence-transformers", "fake"] = "sentence-transformers"
+    embedding_worker_enabled: bool = True
+    embedding_poll_seconds: float = 2.0
+    embedding_batch_size: int = 16
 
     db_connect_timeout_seconds: float = 5.0
     readiness_timeout_seconds: float = 2.0
@@ -162,6 +168,20 @@ class Settings(BaseSettings):
             raise ValueError(f"ADMIN_MFA_MAX_AGE_SECONDS must be 300-{MAX_ADMIN_MFA_AGE_SECONDS}")
         return value
 
+    @field_validator("embedding_poll_seconds")
+    @classmethod
+    def _poll_interval(cls, value: float) -> float:
+        if not 0.1 <= value <= 60:
+            raise ValueError("EMBEDDING_POLL_SECONDS must be 0.1-60")
+        return value
+
+    @field_validator("embedding_batch_size")
+    @classmethod
+    def _batch_size(cls, value: int) -> int:
+        if not 1 <= value <= 128:
+            raise ValueError("EMBEDDING_BATCH_SIZE must be 1-128")
+        return value
+
     @field_validator("room_capacity")
     @classmethod
     def _small_rooms(cls, value: int) -> int:
@@ -241,6 +261,8 @@ class Settings(BaseSettings):
                     f"TURN_SECRET must be a random value of at least "
                     f"{MIN_PRODUCTION_SECRET_LENGTH} characters when TURN_URLS is set in production"
                 )
+        if self.embedding_backend != "sentence-transformers":
+            raise ValueError("EMBEDDING_BACKEND must be sentence-transformers in production")
         if not self.allowed_domains:
             raise ValueError(
                 "ALLOWED_EMAIL_DOMAINS must list at least one campus domain in production"
