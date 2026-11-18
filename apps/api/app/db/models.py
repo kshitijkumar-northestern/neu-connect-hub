@@ -6,6 +6,7 @@ from app.modules.admin import models as admin_models
 from app.modules.auth import models as auth_models
 from app.modules.chat import models as chat_models
 from app.modules.connections import models as connection_models
+from app.modules.discovery import models as discovery_models
 from app.modules.profiles import models as profile_models
 from app.modules.rooms import models as room_models
 from app.modules.scan import models as scan_models
@@ -17,6 +18,7 @@ __all__ = [
     "auth_models",
     "chat_models",
     "connection_models",
+    "discovery_models",
     "ml_models",
     "profile_models",
     "room_models",

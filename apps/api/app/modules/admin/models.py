@@ -63,7 +63,11 @@ class AdminRecoveryCode(Base):
 class AdminAuditLog(Base):
     """One row per administrative action, kept when the accounts and reports it mentions are
     deleted: their ids become NULL. Deliberately no copy of who they were: a deleted account's
-    reports are deleted with it, and the log shouldn't keep what the account removal erased."""
+    reports are deleted with it, and the log shouldn't keep what the account removal erased.
+
+    Its foreign keys are checked at commit. One row can point at an admin, a student and a
+    report about that student; deleting several of them in one transaction nulls those ids
+    through separate cascades, and an immediate check could fire between two of them."""
 
     __tablename__ = "admin_audit_log"
     __table_args__ = (
@@ -75,14 +79,17 @@ class AdminAuditLog(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     # NULL for actions taken from the command line, or once the admin's account is gone.
     admin_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), index=True
+        ForeignKey("users.id", ondelete="SET NULL", deferrable=True, initially="DEFERRED"),
+        index=True,
     )
     action: Mapped[str] = mapped_column(String(32))
     target_user_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), index=True
+        ForeignKey("users.id", ondelete="SET NULL", deferrable=True, initially="DEFERRED"),
+        index=True,
     )
     report_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("reports.id", ondelete="SET NULL"), index=True
+        ForeignKey("reports.id", ondelete="SET NULL", deferrable=True, initially="DEFERRED"),
+        index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True

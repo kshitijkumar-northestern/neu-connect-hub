@@ -120,12 +120,14 @@ describe("ConnectPage", () => {
     // The path+query only: the hash never rides along in router/history state.
     expect(router.state.location.state).toEqual({ from: "/connect" });
 
-    await user.type(screen.getByLabelText("University email"), "ada@northeastern.edu");
+    await user.type(await screen.findByLabelText("University email"), "ada@northeastern.edu");
     await user.type(screen.getByLabelText("Password"), "correct horse battery");
     await user.click(screen.getByRole("button", { name: "Sign in" }));
 
     await waitFor(() => expect(router.state.location.pathname).toBe("/connect"));
-    expect(router.state.location.hash).toBe("");
-    expect(api.callsTo(RESOLVE)[0]?.body).toEqual({ token: TOKEN });
+    // The page reads the token, then strips it from the address; on a slow run that lands a
+    // render after the navigation does.
+    await waitFor(() => expect(router.state.location.hash).toBe(""));
+    await waitFor(() => expect(api.callsTo(RESOLVE)[0]?.body).toEqual({ token: TOKEN }));
   });
 });

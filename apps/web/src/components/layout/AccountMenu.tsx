@@ -8,6 +8,7 @@ import {
   UserIcon,
   UserCircleIcon,
   UserMultipleIcon,
+  UserSearch01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useNavigate } from "react-router";
@@ -49,6 +50,12 @@ export function AccountMenu() {
       <DropdownMenuContent align="end">
         <DropdownMenuLabel className="max-w-64 truncate">{state.user.email}</DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link to="/discover">
+            <HugeiconsIcon icon={UserSearch01Icon} aria-hidden="true" />
+            Discover
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <Link to="/profile">
             <HugeiconsIcon icon={UserIcon} aria-hidden="true" />
