@@ -10,6 +10,7 @@ import { FormError } from "@/features/auth/components/FormError";
 import { errorMessage } from "@/features/auth/errors";
 import { projectsApi, type ProjectDetail } from "@/features/projects/api";
 import { ProjectStatusBadge } from "@/features/projects/components/ProjectStatusBadge";
+import { TeamSuggestions } from "@/features/projects/components/TeamSuggestions";
 import { placesLeftLabel } from "@/features/projects/format";
 import { roomsApi } from "@/features/rooms/api";
 import { roomHttpErrorMessage } from "@/features/rooms/errors";
@@ -237,6 +238,11 @@ export function ProjectDetailPage() {
             ))}
           </ul>
         </div>
+      ) : null}
+
+      {/* The suggestions are built from the missing skills, so with none there's nothing to ask for. */}
+      {isOwner && project.status === "open" && project.missing_skills.length ? (
+        <TeamSuggestions key={project.id} projectId={project.id} />
       ) : null}
 
       <div>

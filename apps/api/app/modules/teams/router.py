@@ -18,8 +18,10 @@ from app.modules.teams.schemas import (
     ProjectDetail,
     ProjectPage,
     ProjectUpdate,
+    TeamSuggestionsOut,
 )
 from app.modules.teams.service import TeamService
+from app.modules.teams.suggestions import TeamSuggestionService
 
 router = APIRouter(tags=["teams"])
 
@@ -31,6 +33,12 @@ STATUS_QUERY = Query(default=None, description="Repeat to select several statuse
 
 def team_service(request: Request, db: AsyncSession = Depends(get_session)) -> TeamService:
     return TeamService(db, request.app.state.limiter)
+
+
+def suggestion_service(
+    request: Request, db: AsyncSession = Depends(get_session)
+) -> TeamSuggestionService:
+    return TeamSuggestionService(db, request.app.state.limiter)
 
 
 @router.post("/projects", status_code=201)
@@ -70,6 +78,17 @@ async def update_project(
 ) -> ProjectDetail:
     """Owner only; the project row is locked for the whole update."""
     return await service.update(current.user.id, project_id, body)
+
+
+@router.get("/projects/{project_id}/suggestions")
+async def get_team_suggestions(
+    project_id: uuid.UUID,
+    current: CurrentSession = Depends(require_verified),
+    service: TeamSuggestionService = Depends(suggestion_service),
+) -> TeamSuggestionsOut:
+    """Owner of an open project only (anyone else, and a full or closed project, gets 404).
+    Suggests students who could fill the skills the team still needs; never enrols anyone."""
+    return await service.suggestions(current.user.id, project_id)
 
 
 @router.post("/projects/{project_id}/apply", status_code=201)

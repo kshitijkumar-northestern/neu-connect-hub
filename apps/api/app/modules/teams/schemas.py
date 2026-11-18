@@ -187,3 +187,23 @@ class ApplicationPage(BaseModel):
 class MyApplicationPage(BaseModel):
     items: list[MyApplicationOut]
     next_offset: int | None
+
+
+class TeamSuggestion(BaseModel):
+    """A student who could fill some of what the team still lacks. Mirrors `TeamSuggestion` in
+    apps/web/src/features/projects/api.ts. Never a score: only what they'd bring and where."""
+
+    user_id: uuid.UUID
+    display_name: str
+    headline: str
+    # The role with places left that they'd fit best.
+    role: RoleRef
+    # Needed skills they'd bring that no earlier suggestion or member has, sorted by name.
+    covers: list[NamedItem]
+
+
+class TeamSuggestionsOut(BaseModel):
+    # At most MAX_TEAM_SUGGESTIONS, best first.
+    suggestions: list[TeamSuggestion]
+    # Needed skills nobody suggested brings, sorted by name.
+    uncovered: list[NamedItem]

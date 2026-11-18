@@ -253,6 +253,114 @@ describe("ProjectDetailPage", () => {
     });
   });
 
+  describe("suggested teammates", () => {
+    const SUGGESTIONS = "GET /projects/project-1/suggestions";
+    const KATHERINE_SUGGESTION = {
+      user_id: OUTSIDER_ID,
+      display_name: "Katherine Johnson",
+      headline: "Orbital mechanics",
+      role: { id: "role-1", title: "Designer" },
+      covers: [{ slug: "python", name: "Python" }],
+    };
+
+    it("shows the owner of an open project suggestions, below the skills the team still needs", async () => {
+      fakeApi({
+        "GET /me": [200, ADA],
+        "GET /projects/project-1": [200, baseProject()],
+        [SUGGESTIONS]: [200, { suggestions: [KATHERINE_SUGGESTION], uncovered: [] }],
+      });
+      renderApp("/projects/project-1");
+
+      const list = await screen.findByRole("list", { name: "Suggested teammates" });
+      expect(screen.getByRole("link", { name: "Katherine Johnson" })).toHaveAttribute("href", `/people/${OUTSIDER_ID}`);
+      expect(screen.getByText("Could fill: Designer")).toBeInTheDocument();
+
+      const heading = screen.getByRole("heading", { level: 2, name: "Suggested teammates" });
+      const missing = screen.getByRole("heading", { level: 2, name: "Skills the team still needs" });
+      expect(missing.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(heading.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(document.body.textContent).not.toMatch(/%/);
+    });
+
+    it.each([
+      ["full", { status: "full", member_count: 3, capacity: 3 }],
+      ["closed", { status: "closed" }],
+    ])("never asks for suggestions when the project is %s", async (_, overrides) => {
+      const api = fakeApi({
+        "GET /me": [200, ADA],
+        "GET /projects/project-1": [200, baseProject(overrides)],
+        [SUGGESTIONS]: [200, { suggestions: [KATHERINE_SUGGESTION], uncovered: [] }],
+      });
+      renderApp("/projects/project-1");
+
+      await screen.findByRole("button", { name: "Reopen project" });
+      expect(screen.queryByRole("heading", { name: "Suggested teammates" })).not.toBeInTheDocument();
+      expect(api.callsTo(SUGGESTIONS)).toHaveLength(0);
+    });
+
+    it("never asks for suggestions when the team needs no more skills", async () => {
+      const api = fakeApi({
+        "GET /me": [200, ADA],
+        "GET /projects/project-1": [200, baseProject({ missing_skills: [] })],
+        [SUGGESTIONS]: [200, { suggestions: [], uncovered: [] }],
+      });
+      renderApp("/projects/project-1");
+
+      await screen.findByRole("link", { name: "Edit project" });
+      expect(screen.queryByRole("heading", { name: "Suggested teammates" })).not.toBeInTheDocument();
+      expect(api.callsTo(SUGGESTIONS)).toHaveLength(0);
+    });
+
+    it("never asks for suggestions for a member", async () => {
+      const api = fakeApi({
+        "GET /me": [200, { ...ADA, id: MEMBER_ID }],
+        "GET /projects/project-1": [200, baseProject({ conversation_id: "conv-1" })],
+        [SUGGESTIONS]: [200, { suggestions: [KATHERINE_SUGGESTION], uncovered: [] }],
+      });
+      renderApp("/projects/project-1");
+
+      await screen.findByText("You're on this team");
+      expect(screen.queryByRole("heading", { name: "Suggested teammates" })).not.toBeInTheDocument();
+      expect(api.callsTo(SUGGESTIONS)).toHaveLength(0);
+    });
+
+    it("never asks for suggestions for an outsider", async () => {
+      const api = fakeApi({
+        "GET /me": [200, { ...ADA, id: OUTSIDER_ID }],
+        "GET /projects/project-1": [200, baseProject()],
+        [SUGGESTIONS]: [200, { suggestions: [KATHERINE_SUGGESTION], uncovered: [] }],
+      });
+      renderApp("/projects/project-1");
+
+      await screen.findByRole("button", { name: "Apply" });
+      expect(screen.queryByRole("heading", { name: "Suggested teammates" })).not.toBeInTheDocument();
+      expect(api.callsTo(SUGGESTIONS)).toHaveLength(0);
+    });
+
+    it("takes the section away once the owner closes the project", async () => {
+      const user = userEvent.setup();
+      let current = baseProject();
+      const api = fakeApi({
+        "GET /me": [200, ADA],
+        "GET /projects/project-1": () => [200, current],
+        "PATCH /projects/project-1": (call) => {
+          current = { ...current, status: (call.body as { status: string }).status };
+          return [200, current];
+        },
+        [SUGGESTIONS]: [200, { suggestions: [KATHERINE_SUGGESTION], uncovered: [] }],
+      });
+      renderApp("/projects/project-1");
+
+      await screen.findByRole("list", { name: "Suggested teammates" });
+      const requests = api.callsTo(SUGGESTIONS).length;
+      await user.click(screen.getByRole("button", { name: "Close project" }));
+
+      await screen.findByRole("button", { name: "Reopen project" });
+      expect(screen.queryByRole("heading", { name: "Suggested teammates" })).not.toBeInTheDocument();
+      expect(api.callsTo(SUGGESTIONS)).toHaveLength(requests);
+    });
+  });
+
   describe("starting a team call", () => {
     it("offers no Team call when there's no conversation yet", async () => {
       fakeApi({ "GET /me": [200, ADA], "GET /projects/project-1": [200, baseProject({ conversation_id: null })] });
