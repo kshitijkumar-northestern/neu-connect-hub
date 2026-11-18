@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ADA, apiError, fakeApi } from "@/test/fake-api";
+import { expectNoAxeViolations } from "@/test/axe";
 import { renderApp } from "@/test/render-app";
 
 const ACTIVE_CODE = {
@@ -184,5 +185,35 @@ describe("SharePage: loading, error and scanning", () => {
     await user.click(await screen.findByRole("button", { name: "Scan a code" }));
 
     expect(await screen.findByRole("dialog", { name: "Scan a code" })).toBeInTheDocument();
+  });
+});
+
+describe("SharePage: accessibility", () => {
+  it("an active code, an expired code and the open scan dialog have no axe violations", async () => {
+    const user = userEvent.setup();
+    const api = fakeApi({ "GET /me": [200, ADA], "GET /me/connection-code": [200, ACTIVE_CODE] });
+    const first = renderApp("/share");
+    expect(await screen.findByRole("img", { name: "QR code for your profile link" })).toBeInTheDocument();
+    await expectNoAxeViolations();
+    first.unmount();
+
+    api.setRoute("GET /me/connection-code", [200, EXPIRED_CODE]);
+    renderApp("/share");
+    expect(await screen.findByRole("button", { name: "Create a code" })).toBeInTheDocument();
+    await expectNoAxeViolations();
+
+    await user.click(screen.getByRole("button", { name: "Scan a code" }));
+    expect(await screen.findByRole("dialog", { name: "Scan a code" })).toBeInTheDocument();
+    await expectNoAxeViolations();
+  });
+
+  it("the rotate confirmation has no axe violations", async () => {
+    const user = userEvent.setup();
+    fakeApi({ "GET /me": [200, ADA], "GET /me/connection-code": [200, ACTIVE_CODE] });
+    renderApp("/share");
+
+    await user.click(await screen.findByRole("button", { name: /new code/i }));
+    expect(await screen.findByRole("alertdialog")).toBeInTheDocument();
+    await expectNoAxeViolations();
   });
 });

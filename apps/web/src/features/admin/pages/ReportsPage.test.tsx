@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ADA, apiError, fakeApi } from "@/test/fake-api";
+import { expectNoAxeViolations } from "@/test/axe";
 import { renderApp } from "@/test/render-app";
 
 const reverify = vi.fn();
@@ -139,5 +140,19 @@ describe("ReportsPage", () => {
     renderApp("/admin");
 
     await vi.waitFor(() => expect(reverify).toHaveBeenCalled());
+  });
+});
+
+describe("ReportsPage: accessibility", () => {
+  it("the queue with open and resolved reports has no axe violations", async () => {
+    fakeApi({
+      "GET /me": [200, ADMIN],
+      "GET /admin/mfa": [200, MFA_VERIFIED],
+      "GET /admin/reports": [200, { items: [OPEN_REPORT, RESOLVED_REPORT], next_offset: 20 }],
+    });
+    renderApp("/admin");
+
+    expect(await screen.findAllByRole("listitem")).toHaveLength(2);
+    await expectNoAxeViolations();
   });
 });

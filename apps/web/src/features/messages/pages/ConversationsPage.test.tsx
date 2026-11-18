@@ -2,6 +2,7 @@ import { act, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ADA, fakeApi } from "@/test/fake-api";
+import { expectNoAxeViolations } from "@/test/axe";
 import { renderApp } from "@/test/render-app";
 import { resetFakeSocket, triggerMessage, triggerPresence } from "@/test/fake-socket";
 
@@ -153,5 +154,20 @@ describe("ConversationsPage", () => {
       triggerPresence({ user_id: GRACE_ID, online: true });
     });
     expect(await screen.findByText("online")).toBeInTheDocument();
+  });
+});
+
+describe("ConversationsPage: accessibility", () => {
+  it("the empty list and a list of direct and team conversations have no axe violations", async () => {
+    const api = fakeApi({ "GET /me": [200, ADA], "GET /conversations": [200, []] });
+    const first = renderApp("/messages");
+    expect(await screen.findByRole("link", { name: "Go to connections" })).toBeInTheDocument();
+    await expectNoAxeViolations();
+    first.unmount();
+
+    api.setRoute("GET /conversations", [200, [TEAM_CONVERSATION, WITH_KATHERINE, WITH_GRACE]]);
+    renderApp("/messages");
+    expect(await screen.findAllByRole("listitem")).toHaveLength(3);
+    await expectNoAxeViolations();
   });
 });

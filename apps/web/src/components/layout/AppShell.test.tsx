@@ -1,4 +1,5 @@
 import { act, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -8,7 +9,8 @@ import { BrandMark } from "@/components/layout/BrandMark";
 import logoOnDark from "@/assets/brand/logo-dark.svg";
 import logoOnLight from "@/assets/brand/logo-light.svg";
 import { AuthProvider } from "@/features/auth/AuthProvider";
-import { apiError, fakeApi } from "@/test/fake-api";
+import { expectNoAxeViolations, OPEN_POPUP } from "@/test/axe";
+import { ADA, apiError, fakeApi } from "@/test/fake-api";
 import { setSystemDark } from "@/test/match-media";
 
 beforeEach(() => {
@@ -38,6 +40,36 @@ describe("AppShell", () => {
     expect(home).toHaveAttribute("href", "/");
     expect(within(header).getByRole("button", { name: /^Theme:/ })).toBeInTheDocument();
     expect(within(screen.getByRole("main")).getByText("page content")).toBeInTheDocument();
+  });
+
+  it("has no axe violations, and the brand link is named once, not by the mark and the text both", async () => {
+    renderShell();
+
+    const home = within(screen.getByRole("banner")).getByRole("link", { name: "NU Connect Hub home" });
+    expect(within(home).queryByRole("img")).not.toBeInTheDocument();
+    expect(await within(screen.getByRole("banner")).findByRole("link", { name: "Sign in" })).toBeInTheDocument();
+    await expectNoAxeViolations();
+  });
+
+  it("the open account and theme menus have no axe violations and don't hide the page", async () => {
+    const user = userEvent.setup();
+    fakeApi({ "GET /me": [200, { ...ADA, role: "admin" }] });
+    renderShell();
+    // A menu is not a modal: hiding the rest of the page (aria-hidden) while it's open would leave
+    // its own trigger focusable but hidden from assistive technology.
+    const hidden = () => document.querySelectorAll("[aria-hidden=true]:has(a, button)");
+
+    await user.click(await screen.findByRole("button", { name: /^Account:/ }));
+    expect(await screen.findByRole("menuitem", { name: "Sign out" })).toBeInTheDocument();
+    expect(hidden()).toHaveLength(0);
+    await expectNoAxeViolations(document.body, OPEN_POPUP);
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("button", { name: /^Account:/ })).toHaveFocus();
+
+    await user.click(screen.getByRole("button", { name: /^Theme:/ }));
+    expect(await screen.findByRole("menuitemradio", { name: "Dark" })).toBeInTheDocument();
+    expect(hidden()).toHaveLength(0);
+    await expectNoAxeViolations(document.body, OPEN_POPUP);
   });
 });
 

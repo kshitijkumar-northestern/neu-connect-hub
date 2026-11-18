@@ -7,6 +7,7 @@ import { routes } from "@/app/routes";
 import { RequireAuth, RequireVerified } from "@/features/auth/guards";
 import { CSRF_COOKIE, CSRF_HEADER } from "@/lib/http";
 import { ADA, apiError, fakeApi, type Reply } from "@/test/fake-api";
+import { expectNoAxeViolations } from "@/test/axe";
 import { renderApp } from "@/test/render-app";
 
 const PASSWORD = "correct horse battery";
@@ -392,5 +393,83 @@ describe("route guards", () => {
     // useHashToken clears the fragment once it's read.
     expect(router.state.location.hash).toBe("");
     expect(api.callsTo("POST /connect/resolve")[0]?.body).toEqual({ token });
+  });
+});
+
+describe("auth pages: accessibility", () => {
+  const SIGNED_OUT = { "GET /me": apiError(401, "unauthorized") };
+
+  it.each([
+    ["sign in", "/sign-in", "Sign in"],
+    ["registration", "/register", "Create your account"],
+    ["forgot password", "/forgot-password", "Forgot your password?"],
+    ["reset password", "/reset-password#token=resettokenresettokenresettokenresettoken123", "Choose a new password"],
+  ])("the %s page has no axe violations", async (_name, path, heading) => {
+    fakeApi(SIGNED_OUT);
+    renderApp(path);
+
+    expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument();
+    await expectNoAxeViolations();
+  });
+
+  it("sign in with a form error and a field error has no axe violations", async () => {
+    const user = userEvent.setup();
+    fakeApi({ ...SIGNED_OUT, "POST /auth/login": apiError(401, "invalid_credentials") });
+    renderApp("/sign-in");
+
+    await user.click(await screen.findByRole("button", { name: "Sign in" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    await expectNoAxeViolations();
+
+    await user.type(screen.getByLabelText("University email"), "ada@northeastern.edu");
+    await user.type(screen.getByLabelText("Password"), "wrong password!!");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(await screen.findByText("That email and password don't match.")).toBeInTheDocument();
+    await expectNoAxeViolations();
+  });
+
+  it("registration with field errors has no axe violations", async () => {
+    const user = userEvent.setup();
+    fakeApi(SIGNED_OUT);
+    renderApp("/register");
+
+    await user.type(await screen.findByLabelText("University email"), "ada@northeastern.edu");
+    await user.type(screen.getByLabelText("Password"), "short");
+    await user.click(screen.getByRole("button", { name: "Create account" }));
+    expect(await screen.findByText("Use at least 12 characters.")).toBeInTheDocument();
+    await expectNoAxeViolations();
+  });
+
+  it("the registration confirmation has no axe violations", async () => {
+    const user = userEvent.setup();
+    fakeApi({ ...SIGNED_OUT, "POST /auth/register": [202, { status: "verification_sent" }] });
+    renderApp("/register");
+
+    await user.type(await screen.findByLabelText("University email"), "ada@northeastern.edu");
+    await user.type(screen.getByLabelText("Password"), PASSWORD);
+    await user.click(screen.getByRole("button", { name: "Create account" }));
+    expect(await screen.findByRole("heading", { name: "Check your inbox" })).toBeInTheDocument();
+    await expectNoAxeViolations();
+  });
+
+  it("the verification page, confirmed and expired, has no axe violations", async () => {
+    const api = fakeApi({ ...SIGNED_OUT, "POST /auth/verify": [200, { status: "verified" }] });
+    const first = renderApp("/verify-email#token=abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG");
+    expect(await screen.findByRole("heading", { name: "Email verified" })).toBeInTheDocument();
+    await expectNoAxeViolations();
+    first.unmount();
+
+    api.setRoute("POST /auth/verify", apiError(400, "invalid_token"));
+    renderApp("/verify-email#token=expiredtokenexpiredtokenexpiredtoken12345");
+    expect(await screen.findByText("This link is invalid or has expired.")).toBeInTheDocument();
+    await expectNoAxeViolations();
+  });
+
+  it("the verify-your-email prompt for an unverified student has no axe violations", async () => {
+    fakeApi({ "GET /me": [200, { ...ADA, verified: false }] });
+    renderApp("/discover");
+
+    expect(await screen.findByRole("heading", { name: "Verify your email" })).toBeInTheDocument();
+    await expectNoAxeViolations();
   });
 });

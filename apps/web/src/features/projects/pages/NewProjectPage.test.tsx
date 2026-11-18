@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { ADA, apiError, fakeApi, type Route } from "@/test/fake-api";
+import { expectNoAxeViolations } from "@/test/axe";
 import { renderApp } from "@/test/render-app";
 
 const SKILLS = [
@@ -147,5 +148,32 @@ describe("NewProjectPage", () => {
     await user.click(screen.getByRole("button", { name: "Create project" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("One of the skills isn't on the list.");
+  });
+});
+
+describe("NewProjectPage: accessibility", () => {
+  it("the form with a role, and with a form error, has no axe violations", async () => {
+    const user = userEvent.setup();
+    fakeApi(routes({ "POST /projects": apiError(422, "unknown_skill") }));
+    renderApp("/projects/new");
+
+    await user.type(await screen.findByLabelText("Title"), "A title");
+    await user.click(screen.getByRole("button", { name: "Add role" }));
+    expect(screen.getByLabelText("Role 1 title")).toBeInTheDocument();
+    await expectNoAxeViolations();
+
+    await user.click(screen.getByRole("button", { name: "Create project" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    await expectNoAxeViolations();
+  });
+
+  it("an empty title error has no axe violations", async () => {
+    const user = userEvent.setup();
+    fakeApi(routes());
+    renderApp("/projects/new");
+
+    await user.click(await screen.findByRole("button", { name: "Create project" }));
+    expect(screen.getByLabelText("Title")).toHaveAttribute("aria-invalid", "true");
+    await expectNoAxeViolations();
   });
 });

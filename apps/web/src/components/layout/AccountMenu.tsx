@@ -40,7 +40,9 @@ export function AccountMenu() {
   }
 
   return (
-    <DropdownMenu>
+    // Not modal: a menu leaves the page as it is (no aria-hidden, no focus trap). Its items still
+    // take arrow keys and Escape still returns focus to the button.
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="sm" aria-label={`Account: ${state.user.email}`}>
           <HugeiconsIcon icon={UserCircleIcon} aria-hidden="true" />

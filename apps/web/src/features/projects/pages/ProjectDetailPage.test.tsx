@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { ADA, apiError, fakeApi } from "@/test/fake-api";
+import { expectNoAxeViolations } from "@/test/axe";
 import { renderApp } from "@/test/render-app";
 
 const OWNER = { user_id: ADA.id, display_name: "Ada Lovelace" };
@@ -439,5 +440,73 @@ describe("ProjectDetailPage", () => {
 
       expect(await screen.findByRole("alert")).toHaveTextContent("This call isn't available.");
     });
+  });
+});
+
+describe("ProjectDetailPage: accessibility", () => {
+  it("the owner's view, with suggested teammates, has no axe violations", async () => {
+    fakeApi({
+      "GET /me": [200, ADA],
+      "GET /projects/project-1": [200, baseProject({ conversation_id: "conv-1" })],
+      "GET /projects/project-1/suggestions": [
+        200,
+        {
+          suggestions: [
+            {
+              user_id: OUTSIDER_ID,
+              display_name: "Katherine Johnson",
+              headline: "Orbital mechanics",
+              role: { id: "role-1", title: "Designer" },
+              covers: [{ slug: "python", name: "Python" }],
+            },
+          ],
+          uncovered: [],
+        },
+      ],
+    });
+    renderApp("/projects/project-1");
+
+    expect(await screen.findByRole("list", { name: "Suggested teammates" })).toBeInTheDocument();
+    await expectNoAxeViolations();
+  });
+
+  it("an outsider's view with the role picker, and after applying, has no axe violations", async () => {
+    const user = userEvent.setup();
+    let applied = false;
+    fakeApi({
+      "GET /me": [200, { ...ADA, id: OUTSIDER_ID }],
+      "GET /projects/project-1": () =>
+        applied
+          ? [200, baseProject({ viewer_application: { id: "app-2", status: "pending", role_id: null } })]
+          : [200, baseProject()],
+      "POST /projects/project-1/apply": () => {
+        applied = true;
+        return [200, { id: "app-2", project_id: "project-1", status: "pending", role_id: null }];
+      },
+    });
+    renderApp("/projects/project-1");
+
+    expect(await screen.findByRole("button", { name: "Apply" })).toBeInTheDocument();
+    await expectNoAxeViolations();
+
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+    expect(await screen.findByText("Application sent")).toBeInTheDocument();
+    await expectNoAxeViolations();
+  });
+
+  it("a member's view and the unavailable message have no axe violations", async () => {
+    const api = fakeApi({
+      "GET /me": [200, { ...ADA, id: MEMBER_ID }],
+      "GET /projects/project-1": [200, baseProject({ conversation_id: "conv-1" })],
+    });
+    const first = renderApp("/projects/project-1");
+    expect(await screen.findByText("You're on this team")).toBeInTheDocument();
+    await expectNoAxeViolations();
+    first.unmount();
+
+    api.setRoute("GET /projects/project-1", apiError(404, "not_found"));
+    renderApp("/projects/project-1");
+    expect(await screen.findByText("This project isn't available.")).toBeInTheDocument();
+    await expectNoAxeViolations();
   });
 });

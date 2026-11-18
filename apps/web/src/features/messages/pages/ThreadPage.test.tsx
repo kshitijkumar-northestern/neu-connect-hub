@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ADA, apiError, fakeApi, type Reply } from "@/test/fake-api";
 import { pendingSendPayloads, resetFakeSocket, resolveSend, sentPayloadsFor, triggerConnect, triggerDisconnect, triggerMessage, triggerPresence } from "@/test/fake-socket";
+import { expectNoAxeViolations } from "@/test/axe";
 import { renderApp } from "@/test/render-app";
 
 vi.mock("@/lib/socket", async () => (await import("@/test/fake-socket")).fakeSocketModule);
@@ -475,5 +476,54 @@ describe("ThreadPage", () => {
 
       expect(await screen.findByRole("alert")).toHaveTextContent("This call isn't available.");
     });
+  });
+});
+
+describe("ThreadPage: accessibility", () => {
+  it("a direct thread with sent, received and removed messages has no axe violations", async () => {
+    fakeApi({
+      "GET /me": [200, ADA],
+      "GET /conversations/conv-1": [200, CONVERSATION],
+      [`GET /conversations/${CONVERSATION_ID}/messages`]: messagesRoute({
+        messages: [MSG_MINE, MSG_THEIRS, MSG_REMOVED],
+        before: "cursor-0",
+        after: "cursor-1",
+      }),
+    });
+    renderApp(`/messages/${CONVERSATION_ID}`);
+
+    expect(await screen.findByText("Hello back")).toBeInTheDocument();
+    // The page's one heading names the conversation, so it can be found by heading navigation.
+    expect(screen.getByRole("heading", { level: 1, name: "Grace Hopper" })).toBeInTheDocument();
+    await expectNoAxeViolations();
+  });
+
+  it("lets the message history be focused, so it scrolls from the keyboard", async () => {
+    const user = userEvent.setup();
+    fakeApi({
+      "GET /me": [200, ADA],
+      "GET /conversations/conv-1": [200, CONVERSATION],
+      [`GET /conversations/${CONVERSATION_ID}/messages`]: messagesRoute({ messages: [MSG_MINE], before: null, after: null }),
+    });
+    renderApp(`/messages/${CONVERSATION_ID}`);
+
+    const history = await screen.findByRole("log", { name: "Conversation history" });
+    await screen.findByText("Hi!");
+    screen.getByRole("button", { name: "Call" }).focus();
+    await user.tab();
+    expect(history).toHaveFocus();
+  });
+
+  it("a team thread has no axe violations", async () => {
+    fakeApi({
+      "GET /me": [200, ADA],
+      [`GET /conversations/${TEAM_CONVERSATION_ID}`]: [200, TEAM_CONVERSATION],
+      [`GET /conversations/${TEAM_CONVERSATION_ID}/messages`]: messagesRoute({ messages: [], before: null, after: null }),
+    });
+    renderApp(`/messages/${TEAM_CONVERSATION_ID}`);
+
+    expect(await screen.findByRole("link", { name: "Campus Tutor Finder" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Campus Tutor Finder" })).toBeInTheDocument();
+    await expectNoAxeViolations();
   });
 });

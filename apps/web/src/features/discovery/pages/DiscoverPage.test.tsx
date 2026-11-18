@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Discovery } from "@/features/discovery/api";
 import { ADA, apiError, fakeApi, type Reply, type Route } from "@/test/fake-api";
+import { expectNoAxeViolations } from "@/test/axe";
 import { renderApp } from "@/test/render-app";
 
 const GRACE_ID = "11111111-1111-4111-8111-111111111112";
@@ -191,5 +192,44 @@ describe("DiscoverPage", () => {
     await user.click(screen.getByRole("button", { name: "Scan a code" }));
 
     expect(await screen.findByRole("heading", { name: "Scan a code" })).toBeInTheDocument();
+  });
+});
+
+describe("DiscoverPage: accessibility", () => {
+  it("the results, the empty state and the opt-in prompt have no axe violations", async () => {
+    const api = fakeApi(discoveryRoutes([GRACE, KATHERINE]));
+    const results = renderApp("/discover");
+    expect(await screen.findByRole("list", { name: "Suggested collaborators" })).toBeInTheDocument();
+    await expectNoAxeViolations();
+    results.unmount();
+
+    api.setRoute("GET /discovery", [200, { matches: [] }]);
+    const empty = renderApp("/discover");
+    expect(await screen.findByText("No suggestions right now")).toBeInTheDocument();
+    await expectNoAxeViolations();
+    empty.unmount();
+
+    api.setRoute("GET /discovery", apiError(403, "discovery_opt_in_required"));
+    renderApp("/discover");
+    expect(await screen.findByText(/Turn on discovery in your profile/)).toBeInTheDocument();
+    await expectNoAxeViolations();
+  });
+
+  it("a sent request and the open scan dialog have no axe violations", async () => {
+    const user = userEvent.setup();
+    fakeApi({
+      ...discoveryRoutes([GRACE]),
+      "POST /connections": [200, { id: "c1", state: "pending", direction: "outgoing", user_id: GRACE_ID }],
+      "POST /discovery/feedback": [204],
+    });
+    renderApp("/discover");
+
+    await user.click(await screen.findByRole("button", { name: "Connect with Grace Hopper" }));
+    expect(await screen.findByText("Connection request sent to Grace Hopper")).toBeInTheDocument();
+    await expectNoAxeViolations();
+
+    await user.click(screen.getByRole("button", { name: "Scan a code" }));
+    expect(await screen.findByRole("heading", { name: "Scan a code" })).toBeInTheDocument();
+    await expectNoAxeViolations();
   });
 });

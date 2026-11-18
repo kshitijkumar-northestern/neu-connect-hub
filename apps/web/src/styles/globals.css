@@ -1,6 +1,6 @@
 /* Design tokens from shadcn/ui preset b27GdDLG (style rhea, neutral, Manrope, radius 0.625rem),
    applied with `npx shadcn@latest apply --preset b27GdDLG`. Edit tokens through the preset;
-   the only local change is the accessibility override at the end of this file. */
+   the only local changes are the accessibility overrides at the end of this file. */
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -132,10 +132,34 @@
   }
 }
 
-/* Accessibility override. The preset's light --ring, oklch(0.708 0 0), gives focus
-   indicators only 2.59:1 against the background; WCAG 1.4.11 needs 3:1. This reuses the preset's
-   own muted-foreground value (4.73:1). Dark mode keeps the preset ring (4.18:1).
-   src/styles/contrast.node.test.ts fails if a future preset apply drops this. */
-:root {
+/* Accessibility overrides, light theme only: dark mode keeps the preset's values. The selector
+   excludes .dark because a plain :root here would come after .dark and win in dark mode too.
+   - --ring: the preset's oklch(0.708 0 0) gives focus indicators only 2.59:1 against the
+     background; WCAG 1.4.11 needs 3:1. This reuses the preset's muted-foreground value (4.73:1).
+   - --muted-foreground: the preset's oklch(0.556 0 0) is 4.73:1 on white but only 4.23:1 on an
+     input's bg-input/50 (select placeholders) and 4.34:1 on bg-muted; 0.53 gives 4.72:1 and 4.84:1.
+   - --destructive: the preset's oklch(0.577 0.245 27.325) is only 3.99:1 as the label of a
+     destructive button or badge on its own bg-destructive/10 tint; 0.52 gives 4.68:1.
+   WCAG 1.4.3 needs 4.5:1 for text. src/styles/contrast.node.test.ts fails if a future preset
+   apply drops these. */
+:root:not(.dark) {
   --ring: oklch(0.556 0 0);
+  --muted-foreground: oklch(0.53 0 0);
+  --destructive: oklch(0.52 0.245 27.325);
+}
+
+/* Reduced motion: for students who ask their system for less motion, every animation and
+   transition finishes at once (tw-animate-css's enter/exit on dialogs, menus and selects, and the
+   components' transition utilities). 0.01ms, not 0, so animationend and transitionend still fire
+   for Radix, which waits for them before it unmounts a closing popup. Unlayered and !important,
+   so it wins over the utility layers. src/styles/motion.node.test.ts guards it. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -300,20 +300,20 @@ function Thread({ conversationId }: { conversationId: string | undefined }) {
     <section className="flex h-[calc(100svh-14rem)] min-h-[28rem] flex-col gap-4">
       <header className="flex flex-col gap-1 border-b pb-3">
         <div className="flex items-center justify-between gap-3">
-          {isProject ? (
-            <Link
-              to={`/projects/${conversation.project_id}`}
-              className="font-medium underline-offset-4 hover:underline"
-            >
-              {conversation.name ?? "Team chat"}
-            </Link>
-          ) : conversation?.other ? (
-            <Link to={`/people/${conversation.other.user_id}`} className="font-medium underline-offset-4 hover:underline">
-              {otherName}
-            </Link>
-          ) : (
-            <span className="font-medium">{otherName}</span>
-          )}
+          {/* The page's heading: who (or which team) the conversation is with. */}
+          <h1 className="min-w-0 font-medium break-words">
+            {isProject ? (
+              <Link to={`/projects/${conversation.project_id}`} className="underline-offset-4 hover:underline">
+                {conversation.name ?? "Team chat"}
+              </Link>
+            ) : conversation?.other ? (
+              <Link to={`/people/${conversation.other.user_id}`} className="underline-offset-4 hover:underline">
+                {otherName}
+              </Link>
+            ) : (
+              otherName
+            )}
+          </h1>
           <div className="flex items-center gap-3">
             {!isProject && conversation?.other ? <PresenceIndicator online={conversation.other.online} /> : null}
             <Button type="button" variant="outline" size="sm" disabled={startingCall} onClick={() => void startCall()}>
@@ -325,7 +325,16 @@ function Thread({ conversationId }: { conversationId: string | undefined }) {
         <FormError>{callError}</FormError>
       </header>
 
-      <div ref={scrollRef} role="log" aria-live="polite" className="flex flex-1 flex-col gap-3 overflow-y-auto rounded-2xl border p-4">
+      <div
+        ref={scrollRef}
+        role="log"
+        aria-live="polite"
+        aria-label="Conversation history"
+        // Focusable so the history scrolls from the keyboard: it often holds no control at all.
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- a scrolling region must be keyboard-reachable
+        tabIndex={0}
+        className="flex flex-1 flex-col gap-3 overflow-y-auto rounded-2xl border p-4 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+      >
         {beforeCursor ? (
           <Button variant="outline" size="sm" className="self-center" disabled={loadingEarlier} onClick={() => void loadEarlier()}>
             {loadingEarlier ? "Loading…" : "Load earlier messages"}

@@ -7,8 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { routes } from "@/app/routes";
 import { ScanCodeDialog } from "@/features/scan/components/ScanCodeDialog";
-import { ADA, fakeApi } from "@/test/fake-api";
+import { ADA, fakeApi, type Route } from "@/test/fake-api";
 import { FakeMediaStream, stubGetUserMedia } from "@/test/fake-webrtc";
+import { expectNoAxeViolations } from "@/test/axe";
 import { renderApp } from "@/test/render-app";
 
 vi.mock("jsqr", () => ({ default: vi.fn() }));
@@ -299,5 +300,55 @@ describe("ScanCodeDialog", () => {
     });
 
     expect(getUserMedia).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("ScanCodeDialog: accessibility", () => {
+  it("the idle, scanning and invalid-code states have no axe violations", async () => {
+    vi.mocked(jsQR).mockReturnValue(decodedAs("https://example.com/not-a-connect-link"));
+    stubGetUserMedia(() => new FakeMediaStream());
+    fakeApi({ "GET /me": [200, ADA] });
+    const user = userEvent.setup();
+    renderApp("/scan-test", withScanDialog());
+
+    expect(await screen.findByRole("button", { name: "Start camera" })).toBeInTheDocument();
+    await expectNoAxeViolations();
+
+    await user.click(screen.getByRole("button", { name: "Start camera" }));
+    expect(await screen.findByText("That isn't a Scan to Connect code.")).toBeInTheDocument();
+    await expectNoAxeViolations();
+  });
+
+  it("the camera-denied fallback has no axe violations", async () => {
+    stubGetUserMedia(new Error("Permission denied"));
+    fakeApi({ "GET /me": [200, ADA] });
+    const user = userEvent.setup();
+    renderApp("/scan-test", withScanDialog());
+
+    await user.click(await screen.findByRole("button", { name: "Start camera" }));
+    expect(await screen.findByText(/We can't use your camera/)).toBeInTheDocument();
+    await expectNoAxeViolations();
+  });
+});
+
+describe("ScanCodeDialog: focus", () => {
+  it.each<[string, string, Record<string, Route>]>([
+    ["Discover", "/discover", { "GET /discovery": [200, { matches: [] }] }],
+    ["Connections", "/connections", { "GET /connections": [200, []] }],
+    ["Share", "/share", { "GET /me/connection-code": [200, { status: "off", url: null, expires_at: null, shareable: true }] }],
+  ])("gives focus back to Scan a code on %s when it closes", async (_page, path, routes) => {
+    fakeApi({ "GET /me": [200, ADA], ...routes });
+    const user = userEvent.setup();
+    renderApp(path);
+
+    const opener = await screen.findByRole("button", { name: "Scan a code" });
+    opener.focus();
+    await user.keyboard("{Enter}");
+    expect(await screen.findByRole("dialog", { name: "Scan a code" })).toBeInTheDocument();
+    expect(opener).not.toHaveFocus();
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(opener).toHaveFocus();
   });
 });

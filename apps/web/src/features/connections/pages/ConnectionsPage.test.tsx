@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { ADA, apiError, fakeApi } from "@/test/fake-api";
+import { expectNoAxeViolations } from "@/test/axe";
 import { renderApp } from "@/test/render-app";
 
 const INCOMING = {
@@ -166,5 +167,30 @@ describe("ConnectionsPage", () => {
     await user.click(await screen.findByRole("button", { name: "Scan a code" }));
 
     expect(await screen.findByRole("heading", { name: "Scan a code" })).toBeInTheDocument();
+  });
+});
+
+describe("ConnectionsPage: accessibility", () => {
+  it("the empty page and the filled-in page have no axe violations", async () => {
+    const api = fakeApi({ "GET /me": [200, ADA], "GET /connections": [200, []] });
+    const first = renderApp("/connections");
+    expect(await screen.findByText("You don't have any connections yet.")).toBeInTheDocument();
+    await expectNoAxeViolations();
+    first.unmount();
+
+    api.setRoute("GET /connections", [200, [INCOMING, OUTGOING, ACCEPTED]]);
+    renderApp("/connections");
+    expect(await screen.findByRole("link", { name: "Grace Hopper" })).toBeInTheDocument();
+    await expectNoAxeViolations();
+  });
+
+  it("the open scan dialog has no axe violations", async () => {
+    const user = userEvent.setup();
+    fakeApi({ "GET /me": [200, ADA], "GET /connections": [200, []] });
+    renderApp("/connections");
+
+    await user.click(await screen.findByRole("button", { name: "Scan a code" }));
+    expect(await screen.findByRole("heading", { name: "Scan a code" })).toBeInTheDocument();
+    await expectNoAxeViolations();
   });
 });

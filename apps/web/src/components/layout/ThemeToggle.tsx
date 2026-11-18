@@ -27,7 +27,8 @@ export function ThemeToggle() {
   const current = OPTIONS.find((option) => option.value === theme) ?? OPTIONS[2];
 
   return (
-    <DropdownMenu>
+    // Not modal, like the account menu: the page stays exposed to assistive technology.
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" aria-label={`Theme: ${current?.label}`}>
           <HugeiconsIcon icon={current?.icon ?? ComputerIcon} aria-hidden="true" />

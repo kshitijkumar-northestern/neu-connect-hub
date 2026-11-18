@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { ADA, apiError, fakeApi } from "@/test/fake-api";
+import { expectNoAxeViolations } from "@/test/axe";
 import { renderApp } from "@/test/render-app";
 
 const OTHER_ID = "22222222-2222-4222-8222-222222222222";
@@ -259,5 +260,43 @@ describe("PublicProfilePage: connections", () => {
 
     expect(await screen.findByText(/now hidden from you/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Connect" })).not.toBeInTheDocument();
+  });
+});
+
+describe("PublicProfilePage: accessibility", () => {
+  it("another student's profile has no axe violations", async () => {
+    fakeApi({ "GET /me": [200, ADA], [`GET /profiles/${OTHER_ID}`]: [200, OTHER_PROFILE] });
+    renderApp(`/people/${OTHER_ID}`);
+
+    expect(await screen.findByRole("heading", { name: "Grace Hopper" })).toBeInTheDocument();
+    await expectNoAxeViolations();
+  });
+
+  it("the block confirmation and the report dialog have no axe violations", async () => {
+    const user = userEvent.setup();
+    fakeApi({ "GET /me": [200, ADA], [`GET /profiles/${OTHER_ID}`]: [200, OTHER_PROFILE] });
+    renderApp(`/people/${OTHER_ID}`);
+
+    await user.click(await screen.findByRole("button", { name: "Block" }));
+    expect(await screen.findByRole("heading", { name: "Block this student?" })).toBeInTheDocument();
+    await expectNoAxeViolations();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await user.click(await screen.findByRole("button", { name: "Report" }));
+    expect(await screen.findByLabelText("Reason")).toBeInTheDocument();
+    await expectNoAxeViolations();
+  });
+
+  it("the unavailable message and your own profile have no axe violations", async () => {
+    const api = fakeApi({ "GET /me": [200, ADA], [`GET /profiles/${OTHER_ID}`]: apiError(404, "not_found") });
+    const first = renderApp(`/people/${OTHER_ID}`);
+    expect(await screen.findByText("This profile isn't available.")).toBeInTheDocument();
+    await expectNoAxeViolations();
+    first.unmount();
+
+    api.setRoute(`GET /profiles/${ADA.id}`, [200, { ...OTHER_PROFILE, user_id: ADA.id }]);
+    renderApp(`/people/${ADA.id}`);
+    expect(await screen.findByText("This is how other students see your profile.")).toBeInTheDocument();
+    await expectNoAxeViolations();
   });
 });

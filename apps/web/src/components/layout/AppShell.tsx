@@ -19,7 +19,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             aria-label="NU Connect Hub home"
             className="flex items-center gap-2.5 rounded-md font-semibold tracking-tight focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
           >
-            <BrandMark />
+            <BrandMark alt="" />
             <span className="text-base">NU Connect Hub</span>
           </Link>
           <div className="flex items-center gap-1">

@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { ADA, apiError, fakeApi } from "@/test/fake-api";
+import { expectNoAxeViolations } from "@/test/axe";
 import { renderApp } from "@/test/render-app";
 
 const TOKEN = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLM1234"; // 43 chars of [A-Za-z0-9_-]
@@ -129,5 +130,26 @@ describe("ConnectPage", () => {
     // render after the navigation does.
     await waitFor(() => expect(router.state.location.hash).toBe(""));
     await waitFor(() => expect(api.callsTo(RESOLVE)[0]?.body).toEqual({ token: TOKEN }));
+  });
+});
+
+describe("ConnectPage: accessibility", () => {
+  it.each(["none", "pending_incoming", "connected"])(
+    "a preview with connection_state %s has no axe violations",
+    async (connectionState) => {
+      fakeApi({ "GET /me": [200, ADA], [RESOLVE]: [200, previewWith(connectionState)] });
+      renderApp(`/connect#token=${TOKEN}`);
+
+      expect(await screen.findByRole("heading", { name: "Grace Hopper" })).toBeInTheDocument();
+      await expectNoAxeViolations();
+    },
+  );
+
+  it("the invalid-code message has no axe violations", async () => {
+    fakeApi({ "GET /me": [200, ADA] });
+    renderApp("/connect");
+
+    expect(await screen.findByText("This code isn't valid. Ask them for a new one.")).toBeInTheDocument();
+    await expectNoAxeViolations();
   });
 });
