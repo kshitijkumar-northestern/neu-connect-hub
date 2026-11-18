@@ -14,6 +14,7 @@ from sqlalchemy import delete, select
 
 from app.core.config import Settings, get_settings
 from app.db.session import create_database
+from app.ml.models import Embedding
 from app.modules.auth.models import User
 from app.modules.auth.passwords import PasswordService
 from app.modules.profiles.models import (
@@ -278,6 +279,14 @@ async def seed(settings: Settings, *, count: int = 40, password: str) -> int:
             session.add_all(profile_skills)
             session.add_all(profile_interests)
             session.add_all(availability_slots)
+
+            # Seeding bypasses the profile API, so queue embeddings the way a profile save would:
+            # a stale row for each discoverable student, for the background worker to encode.
+            session.add_all(
+                Embedding(user_id=profile.user_id, stale=True)
+                for profile in profiles
+                if profile.discoverable
+            )
 
             await session.commit()
 

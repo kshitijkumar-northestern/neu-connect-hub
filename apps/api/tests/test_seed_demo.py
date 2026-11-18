@@ -200,3 +200,26 @@ async def test_seeded_profiles_validate_and_have_no_overlapping_availability(
 
         # If we got here, validation passed (ProfileInput constructor validates on construction)
         assert profile_input is not None
+
+
+async def test_discoverable_demo_students_are_queued_for_embedding(
+    settings: Settings, clean_database: AsyncEngine
+) -> None:
+    """Seeding bypasses the profile API, so it must queue embeddings itself, as a profile save
+    would: one stale row per discoverable student and none for the rest."""
+    await seed(settings, count=12, password=DEMO_PASSWORD)
+
+    async with clean_database.connect() as connection:
+        queued = (
+            await connection.execute(
+                text("SELECT user_id, stale, embedding IS NULL FROM embeddings ORDER BY user_id")
+            )
+        ).all()
+        discoverable = (
+            await connection.execute(
+                text("SELECT user_id FROM profiles WHERE discoverable ORDER BY user_id")
+            )
+        ).all()
+
+    assert [row[0] for row in queued] == [row[0] for row in discoverable]
+    assert all(stale and empty for _, stale, empty in queued)
