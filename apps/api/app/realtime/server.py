@@ -44,6 +44,9 @@ def create_socketio_server(
     sio = socketio.AsyncServer(
         async_mode="asgi",
         cors_allowed_origins=[settings.web_origin],
+        # A larger WebSocket message or long-polling body disconnects the client before any
+        # handler sees it (Engine.IO's own default is about 1 MB).
+        max_http_buffer_size=settings.socket_max_message_bytes,
         logger=False,
         engineio_logger=False,
     )

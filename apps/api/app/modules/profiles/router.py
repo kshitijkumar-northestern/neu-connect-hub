@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import require_verified
@@ -19,8 +19,8 @@ from app.modules.profiles.service import ProfileService
 router = APIRouter(tags=["profiles"])
 
 
-def profile_service(db: AsyncSession = Depends(get_session)) -> ProfileService:
-    return ProfileService(db)
+def profile_service(request: Request, db: AsyncSession = Depends(get_session)) -> ProfileService:
+    return ProfileService(db, request.app.state.limiter)
 
 
 @router.get("/skills")

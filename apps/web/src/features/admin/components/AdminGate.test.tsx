@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { routes } from "@/app/routes";
 import { useAdminGate } from "@/features/admin/components/AdminGate";
 import { ADA, apiError, fakeApi } from "@/test/fake-api";
+import { expectNoAxeViolations } from "@/test/axe";
 import { renderApp } from "@/test/render-app";
 
 const ADMIN = { ...ADA, role: "admin" as const };
@@ -96,5 +97,50 @@ describe("AdminGate: reverify", () => {
 
     expect(await screen.findByRole("heading", { name: "Verify it's you" })).toBeInTheDocument();
     expect(api.callsTo("GET /admin/mfa").length).toBeGreaterThan(callsBeforeReverify);
+  });
+});
+
+describe("AdminGate: accessibility", () => {
+  it("the enrolment, recovery codes and verification screens have no axe violations", async () => {
+    const user = userEvent.setup();
+    const api = fakeApi({
+      "GET /me": [200, ADMIN],
+      "GET /admin/mfa": [200, NOT_ENROLLED],
+      "POST /admin/mfa/enroll": [
+        200,
+        { secret: "JBSWY3DPEHPK3PXP", otpauth_url: "otpauth://totp/NU%20Connect%20Hub:ada@northeastern.edu" },
+      ],
+      "POST /admin/mfa/confirm": [200, { recovery_codes: ["ABCD-EFGH-0001", "ABCD-EFGH-0002"] }],
+    });
+    const first = renderApp("/admin");
+    expect(await screen.findByRole("heading", { name: "Set up two-factor authentication" })).toBeInTheDocument();
+    await expectNoAxeViolations();
+
+    await user.click(screen.getByRole("button", { name: "Set up your authenticator" }));
+    expect(await screen.findByRole("img", { name: "QR code to scan with your authenticator app" })).toBeInTheDocument();
+    await expectNoAxeViolations();
+
+    await user.type(screen.getByLabelText("Authentication code"), "123456");
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+    expect(await screen.findByRole("heading", { name: "Save your recovery codes" })).toBeInTheDocument();
+    await expectNoAxeViolations();
+    first.unmount();
+
+    api.setRoute("GET /admin/mfa", [200, { ...ENROLLED_NOT_VERIFIED, recovery_codes_left: 1 }]);
+    renderApp("/admin");
+    expect(await screen.findByRole("heading", { name: "Verify it's you" })).toBeInTheDocument();
+    await expectNoAxeViolations();
+
+    await user.click(screen.getByRole("button", { name: "Use a recovery code instead" }));
+    expect(screen.getByLabelText("Recovery code")).toBeInTheDocument();
+    await expectNoAxeViolations();
+  });
+
+  it("the not-found page a student sees has no axe violations", async () => {
+    fakeApi({ "GET /me": [200, ADA] });
+    renderApp("/admin");
+
+    expect(await screen.findByRole("heading", { name: "Page not found" })).toBeInTheDocument();
+    await expectNoAxeViolations();
   });
 });

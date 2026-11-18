@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import type { RecordedCall, Reply, Route } from "@/test/fake-api";
 import { ADA, apiError, fakeApi } from "@/test/fake-api";
+import { expectNoAxeViolations, OPEN_POPUP } from "@/test/axe";
 import { renderApp } from "@/test/render-app";
 
 const SKILLS = [
@@ -251,5 +252,44 @@ describe("ProfilePage: an existing profile", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/isn't on the list/);
     expect(api.callsTo("PUT /me/profile")).toHaveLength(1);
+  });
+});
+
+describe("ProfilePage: accessibility", () => {
+  it("the empty form, with a field error, has no axe violations", async () => {
+    const user = userEvent.setup();
+    fakeApi(routes({ "GET /me/profile": apiError(404, "profile_not_found") }));
+    renderApp("/profile");
+
+    await screen.findByText("Tell other students about yourself.");
+    await expectNoAxeViolations();
+
+    await user.click(screen.getByRole("button", { name: "Save profile" }));
+    expect(await screen.findByText("Enter your name.")).toBeInTheDocument();
+    await expectNoAxeViolations();
+  });
+
+  it("a filled-in profile, saved, has no axe violations", async () => {
+    const user = userEvent.setup();
+    fakeApi(routes({ "GET /me/profile": [200, FULL_PROFILE] }));
+    renderApp("/profile");
+
+    expect(await screen.findByLabelText("Display name")).toHaveValue("Ada Lovelace");
+    await expectNoAxeViolations();
+
+    await user.click(screen.getByRole("button", { name: "Save profile" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Profile saved");
+    await expectNoAxeViolations();
+  });
+
+  it("the open skill picker has no axe violations", async () => {
+    const user = userEvent.setup();
+    fakeApi(routes({ "GET /me/profile": apiError(404, "profile_not_found") }));
+    renderApp("/profile");
+
+    await screen.findByText("Tell other students about yourself.");
+    await user.click(within(screen.getByRole("group", { name: "Skills you have" })).getByLabelText("Skill"));
+    expect(await screen.findByRole("option", { name: "React" })).toBeInTheDocument();
+    await expectNoAxeViolations(document.body, OPEN_POPUP);
   });
 });

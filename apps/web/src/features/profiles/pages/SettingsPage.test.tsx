@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { ADA, apiError, fakeApi } from "@/test/fake-api";
+import { expectNoAxeViolations } from "@/test/axe";
 import { renderApp } from "@/test/render-app";
 
 const BLOCKED = {
@@ -93,5 +94,21 @@ describe("SettingsPage: delete account", () => {
     await waitFor(() =>
       expect(screen.getByRole("banner").textContent).toMatch(/Sign in/),
     );
+  });
+});
+
+describe("SettingsPage: accessibility", () => {
+  it("the page with a blocked student, and the delete confirmation, have no axe violations", async () => {
+    const user = userEvent.setup();
+    fakeApi({ "GET /me": [200, ADA], "GET /blocks": [200, [BLOCKED]] });
+    renderApp("/settings");
+
+    expect(await screen.findByText("Grace Hopper")).toBeInTheDocument();
+    await expectNoAxeViolations();
+
+    await user.type(screen.getByLabelText("Password"), "correct horse battery");
+    await user.click(screen.getByRole("button", { name: "Delete account" }));
+    expect(await screen.findByRole("alertdialog")).toBeInTheDocument();
+    await expectNoAxeViolations();
   });
 });

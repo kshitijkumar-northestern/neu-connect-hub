@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { ADA, apiError, fakeApi } from "@/test/fake-api";
+import { expectNoAxeViolations } from "@/test/axe";
 import { renderApp } from "@/test/render-app";
 
 const PROJECT_ONE_ID = "project-1";
@@ -109,5 +110,20 @@ describe("MyApplicationsPage", () => {
     const offsetCalls = api.callsTo("GET /me/applications").filter((call) => call.search.includes("offset="));
     expect(offsetCalls).toHaveLength(1);
     expect(offsetCalls[0]?.search).toBe("?offset=20");
+  });
+});
+
+describe("MyApplicationsPage: accessibility", () => {
+  it("the empty state and a list of applications have no axe violations", async () => {
+    const api = fakeApi({ "GET /me": [200, ADA], "GET /me/applications": [200, { items: [], next_offset: null }] });
+    const first = renderApp("/applications");
+    expect(await screen.findByRole("heading", { name: "My applications" })).toBeInTheDocument();
+    await expectNoAxeViolations();
+    first.unmount();
+
+    api.setRoute("GET /me/applications", [200, { items: [PENDING_APPLICATION, ACCEPTED_APPLICATION], next_offset: 20 }]);
+    renderApp("/applications");
+    expect(await screen.findByRole("link", { name: "Campus Tutor Finder" })).toBeInTheDocument();
+    await expectNoAxeViolations();
   });
 });

@@ -3,7 +3,8 @@ import type { RouteObject } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { routes } from "@/app/routes";
-import { apiError, fakeApi } from "@/test/fake-api";
+import { expectNoAxeViolations } from "@/test/axe";
+import { ADA, apiError, fakeApi } from "@/test/fake-api";
 import { renderApp } from "@/test/render-app";
 
 const renderAt = renderApp;
@@ -51,5 +52,26 @@ describe("routes", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Something went wrong");
     expect(screen.queryByText(/secret internal detail/)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Go to the home page" })).toHaveAttribute("href", "/");
+  });
+});
+
+describe("routes: accessibility", () => {
+  it("the home page, signed out and signed in, has no axe violations", async () => {
+    const first = renderAt("/");
+    expect(await screen.findByRole("link", { name: "Create account" })).toBeInTheDocument();
+    await expectNoAxeViolations();
+    first.unmount();
+
+    fakeApi({ "GET /me": [200, ADA] });
+    renderAt("/");
+    expect(await screen.findByRole("link", { name: "Find collaborators" })).toBeInTheDocument();
+    await expectNoAxeViolations();
+  });
+
+  it("the not-found page has no axe violations", async () => {
+    renderAt("/does/not/exist");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeInTheDocument();
+    await expectNoAxeViolations();
   });
 });

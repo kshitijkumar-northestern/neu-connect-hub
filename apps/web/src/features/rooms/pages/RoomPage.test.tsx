@@ -20,6 +20,7 @@ import {
   triggerRoomRemoved,
 } from "@/test/fake-socket";
 import { FakeMediaStream, installFakeRTCPeerConnection, stubGetUserMedia, stubGetUserMediaPending } from "@/test/fake-webrtc";
+import { expectNoAxeViolations } from "@/test/axe";
 import { renderApp } from "@/test/render-app";
 
 vi.mock("@/lib/socket", async () => (await import("@/test/fake-socket")).fakeSocketModule);
@@ -566,5 +567,59 @@ describe("RoomPage", () => {
 
     expect(await screen.findByText(message)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Join call" })).toBeInTheDocument();
+  });
+});
+
+describe("RoomPage: accessibility", () => {
+  it("the lobby, before and after the device check, has no axe violations", async () => {
+    stubGetUserMedia();
+    fakeApi(baseRoutes());
+    const user = userEvent.setup();
+    renderApp(`/rooms/${ROOM_ID}`);
+
+    expect(await screen.findByRole("button", { name: "Join call" })).toBeInTheDocument();
+    await expectNoAxeViolations();
+
+    await user.click(screen.getByRole("button", { name: "Check camera and microphone" }));
+    expect(await screen.findByRole("button", { name: "Microphone" })).toBeInTheDocument();
+    await expectNoAxeViolations();
+  });
+
+  it("the call with a peer, and after a dropped connection, has no axe violations", async () => {
+    stubGetUserMedia();
+    fakeApi(baseRoutes({ [`GET /rooms/${ROOM_ID}`]: [200, { ...ROOM, name: "Direct call" }] }));
+    const user = userEvent.setup();
+    renderApp(`/rooms/${ROOM_ID}`);
+
+    await user.click(await screen.findByRole("button", { name: "Check camera and microphone" }));
+    await screen.findByText("You");
+    await user.click(screen.getByRole("button", { name: "Join call" }));
+    await awaitJoinAttempt();
+    await flushAct(() =>
+      resolveRoomJoin({ ok: true, room_id: ROOM_ID, peers: [{ user_id: OTHER_ID, display_name: "Grace Hopper" }] }),
+    );
+    expect(await screen.findByRole("button", { name: "Leave call" })).toBeInTheDocument();
+    expect(await screen.findByText("Grace Hopper")).toBeInTheDocument();
+    await expectNoAxeViolations();
+
+    await flushAct(() => triggerDisconnect());
+    expect(await screen.findByText("Connection lost.")).toBeInTheDocument();
+    await expectNoAxeViolations();
+  });
+
+  it("the ended and unavailable messages have no axe violations", async () => {
+    const api = fakeApi({
+      "GET /me": [200, ADA],
+      [`GET /rooms/${ROOM_ID}`]: [200, { ...ROOM, room_state: "ended", ended_at: "2026-11-05T01:00:00Z" }],
+    });
+    const first = renderApp(`/rooms/${ROOM_ID}`);
+    expect(await screen.findByText("This call has ended.")).toBeInTheDocument();
+    await expectNoAxeViolations();
+    first.unmount();
+
+    api.setRoute(`GET /rooms/${ROOM_ID}`, apiError(404, "not_found"));
+    renderApp(`/rooms/${ROOM_ID}`);
+    expect(await screen.findByText("This call isn't available.")).toBeInTheDocument();
+    await expectNoAxeViolations();
   });
 });

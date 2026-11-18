@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { ADA, fakeApi } from "@/test/fake-api";
+import { expectNoAxeViolations } from "@/test/axe";
 import { renderApp } from "@/test/render-app";
 
 function project(overrides: Partial<Record<string, unknown>> = {}) {
@@ -150,5 +151,25 @@ describe("ProjectsPage", () => {
     expect(
       api.calls.filter((call) => call.key === "GET /me/projects" && call.search.includes("offset=20")),
     ).toHaveLength(1);
+  });
+});
+
+describe("ProjectsPage: accessibility", () => {
+  it("the empty list and a list with your own projects have no axe violations", async () => {
+    const api = fakeApi({ "GET /me": [200, ADA], "GET /projects": [200, { items: [], next_offset: null }] });
+    const first = renderApp("/projects");
+    expect(await screen.findByText("No projects are looking for teammates right now.")).toBeInTheDocument();
+    await expectNoAxeViolations();
+    first.unmount();
+
+    api.setRoute("GET /projects", [200, { items: [project({ id: "open-1" })], next_offset: 20 }]);
+    api.setRoute("GET /me/projects", [
+      200,
+      { items: [project({ id: "mine-1", title: "Closed project", status: "closed" })], next_offset: null },
+    ]);
+    renderApp("/projects");
+    expect(await screen.findByRole("heading", { name: "Your projects" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Load more" })).toBeInTheDocument();
+    await expectNoAxeViolations();
   });
 });

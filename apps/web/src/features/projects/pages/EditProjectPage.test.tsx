@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { ADA, apiError, fakeApi, type RecordedCall, type Route } from "@/test/fake-api";
+import { expectNoAxeViolations } from "@/test/axe";
 import { renderApp } from "@/test/render-app";
 
 const SKILLS = [
@@ -120,5 +121,15 @@ describe("EditProjectPage", () => {
 
     expect(await screen.findByText("The team size can't be smaller than the team already is.")).toBeInTheDocument();
     expect(api.callsTo("PATCH /projects/project-1")).toHaveLength(0);
+  });
+});
+
+describe("EditProjectPage: accessibility", () => {
+  it("the pre-filled form has no axe violations", async () => {
+    fakeApi(routes());
+    renderApp("/projects/project-1/edit");
+
+    expect(await screen.findByLabelText("Title")).toHaveValue("Campus meal planner");
+    await expectNoAxeViolations();
   });
 });

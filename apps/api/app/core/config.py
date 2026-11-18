@@ -1,12 +1,16 @@
 import hashlib
 import hmac
+import ipaddress
+import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal, Self
+from typing import Any, Literal, Self
 from urllib.parse import urlsplit
 
 from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
 
 API_ROOT = Path(__file__).resolve().parents[2]
 # apps/api/.env, wherever the process was started from (repo root, apps/api, CI).
@@ -19,6 +23,12 @@ MAX_TURN_CREDENTIAL_TTL_SECONDS = 3600
 MAX_ROOM_CAPACITY = 8
 MAX_SHARE_TOKEN_TTL_SECONDS = 365 * 24 * 3600
 MAX_ADMIN_MFA_AGE_SECONDS = 24 * 3600
+# Socket.IO frames: the floor fits the largest SDP offer the signaling schema accepts, with its
+# JSON framing; the ceiling is Engine.IO's own default.
+MIN_SOCKET_MESSAGE_BYTES = 32 * 1024
+MAX_SOCKET_MESSAGE_BYTES = 1024 * 1024
+# asyncpg `ssl` modes that never fall back to plaintext ("allow" and "prefer" do).
+TLS_SSL_MODES = frozenset({"require", "verify-ca", "verify-full"})
 _DEFAULT_PORTS = {"http": 80, "https": 443}
 _ORIGIN_ERROR = "WEB_ORIGIN must be a bare origin such as https://hub.example"
 
@@ -26,7 +36,11 @@ _ORIGIN_ERROR = "WEB_ORIGIN must be a bare origin such as https://hub.example"
 class Settings(BaseSettings):
     """Runtime configuration, read from the environment and apps/api/.env."""
 
-    model_config = SettingsConfigDict(env_file=ENV_FILE, env_file_encoding="utf-8", extra="ignore")
+    # hide_input_in_errors: a startup failure ends up in the platform's logs, and pydantic would
+    # otherwise print the offending value (a DATABASE_URL with its password, a secret) there.
+    model_config = SettingsConfigDict(
+        env_file=ENV_FILE, env_file_encoding="utf-8", extra="ignore", hide_input_in_errors=True
+    )
 
     app_env: Literal["development", "test", "production"] = "development"
     database_url: str
@@ -45,6 +59,9 @@ class Settings(BaseSettings):
     readiness_timeout_seconds: float = 2.0
     # Request bodies larger than this get 413 before any parsing. A full profile is under 16 KiB.
     max_request_body_bytes: int = 64 * 1024
+    # The same idea for Socket.IO: a larger frame (WebSocket message or long-polling body) ends
+    # the connection before any handler runs. An SDP offer is at most about 20 KB.
+    socket_max_message_bytes: int = 64 * 1024
 
     # Registration is limited to these campus email domains (comma-separated).
     allowed_email_domains: str = ""
@@ -138,11 +155,38 @@ class Settings(BaseSettings):
         """Secure cookies whenever the site is served over https (always, in production)."""
         return self.web_origin.startswith("https://")
 
+    @property
+    def database_uses_tls(self) -> bool:
+        """True when DATABASE_URL makes asyncpg insist on TLS (it never falls back)."""
+        return _connect_args(self.database_url).get("ssl") in TLS_SSL_MODES
+
+    @property
+    def database_is_local(self) -> bool:
+        """True when every host asyncpg may connect to is this machine (loopback, or a Unix
+        socket)."""
+        return all(_is_local_host(host) for host in _database_hosts(self.database_url))
+
     @field_validator("database_url")
     @classmethod
     def _asyncpg_driver(cls, value: str) -> str:
         if not value.startswith("postgresql+asyncpg://"):
             raise ValueError("DATABASE_URL must start with postgresql+asyncpg://")
+        if "sslmode" in _connect_args(value):
+            # SQLAlchemy hands URL parameters to asyncpg.connect(), which has no `sslmode`: the
+            # first connection would fail with a TypeError instead of starting up.
+            raise ValueError(
+                "DATABASE_URL must use ssl=..., not sslmode=..., with the asyncpg driver"
+            )
+        return value
+
+    @field_validator("socket_max_message_bytes")
+    @classmethod
+    def _socket_frame_cap(cls, value: int) -> int:
+        if not MIN_SOCKET_MESSAGE_BYTES <= value <= MAX_SOCKET_MESSAGE_BYTES:
+            raise ValueError(
+                f"SOCKET_MAX_MESSAGE_BYTES must be "
+                f"{MIN_SOCKET_MESSAGE_BYTES}-{MAX_SOCKET_MESSAGE_BYTES}"
+            )
         return value
 
     @field_validator("turn_credential_ttl_seconds")
@@ -231,6 +275,11 @@ class Settings(BaseSettings):
             raise ValueError("EMAIL_PROVIDER_API_KEY is still the placeholder value in production")
         if not self.web_origin.startswith("https://"):
             raise ValueError("WEB_ORIGIN must use https in production")
+        if not self.database_is_local and not self.database_uses_tls:
+            raise ValueError(
+                "DATABASE_URL must request TLS for a remote database in production: add "
+                "ssl=require (or ssl=verify-full with a trusted CA)"
+            )
         if self.mail_backend != "smtp" or not self.smtp_host:
             raise ValueError("MAIL_BACKEND must be smtp with SMTP_HOST set in production")
         share_secret = self.share_token_secret.get_secret_value() if self.share_token_secret else ""
@@ -268,6 +317,52 @@ class Settings(BaseSettings):
                 "ALLOWED_EMAIL_DOMAINS must list at least one campus domain in production"
             )
         return self
+
+
+def _connect_args(url: str) -> dict[str, Any]:
+    """The keyword arguments SQLAlchemy will hand asyncpg.connect() for this URL, worked out by
+    the dialect itself without connecting: the query is applied over the URL's own host and
+    port (so `?host=` wins), and repeated hosts become a list."""
+    try:
+        parsed = make_url(url)
+        _, kwargs = parsed.get_dialect()().create_connect_args(parsed)
+    except (ArgumentError, ValueError):
+        # Both messages quote URL text (a misplaced @ or : in a password moves it into the port),
+        # so none of it is kept or chained.
+        raise ValueError("DATABASE_URL is not a valid database URL") from None
+    return dict(kwargs)
+
+
+def _database_hosts(url: str) -> list[str]:
+    """Every host asyncpg may connect to. With no host in the connect arguments it uses
+    PGHOST, then the default Unix sockets and localhost; an empty list means those defaults.
+    Comma lists are split, as asyncpg splits them. (asyncpg reads service files only for a DSN,
+    which SQLAlchemy never passes.)"""
+    host = _connect_args(url).get("host") or os.environ.get("PGHOST", "")
+    entries = [host] if isinstance(host, str) else [str(entry) for entry in host]
+    return [
+        _without_port(part.strip())
+        for entry in entries
+        for part in entry.split(",")
+        if part.strip()
+    ]
+
+
+def _without_port(host: str) -> str:
+    if host.startswith("/"):
+        return host
+    if host.startswith("["):
+        return host[1 : host.find("]")]
+    return host.rsplit(":", 1)[0] if host.count(":") == 1 else host
+
+
+def _is_local_host(host: str) -> bool:
+    if host.startswith("/") or host.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host.strip("[]")).is_loopback
+    except ValueError:
+        return False
 
 
 @lru_cache

@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { ADA, apiError, fakeApi } from "@/test/fake-api";
+import { expectNoAxeViolations } from "@/test/axe";
 import { renderApp } from "@/test/render-app";
 
 const PROJECT_ID = "project-1";
@@ -323,5 +324,23 @@ describe("ProjectApplicationsPage", () => {
     renderApp(`/projects/${PROJECT_ID}/applications`);
 
     expect(await screen.findByText("This project isn't available.")).toBeInTheDocument();
+  });
+});
+
+describe("ProjectApplicationsPage: accessibility", () => {
+  it("the queue with pending and decided applications has no axe violations", async () => {
+    fakeApi({
+      "GET /me": [200, ADA],
+      [`GET /projects/${PROJECT_ID}`]: [200, PROJECT],
+      [`GET /projects/${PROJECT_ID}/applications`]: (call) =>
+        call.search.includes("status=pending")
+          ? [200, { items: [PENDING_APP, ANY_ROLE_PENDING], next_offset: null }]
+          : [200, { items: [DECIDED_APP], next_offset: null }],
+    });
+    renderApp(`/projects/${PROJECT_ID}/applications`);
+
+    expect(await screen.findByRole("button", { name: "Accept Grace Hopper" })).toBeInTheDocument();
+    expect(await screen.findByText("Katherine Johnson")).toBeInTheDocument();
+    await expectNoAxeViolations();
   });
 });

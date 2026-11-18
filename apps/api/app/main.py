@@ -1,4 +1,5 @@
-"""ASGI composition: FastAPI for HTTP, wrapped by Python Socket.IO."""
+"""ASGI composition: FastAPI for HTTP, wrapped by Python Socket.IO, wrapped by the security
+headers."""
 
 import asyncio
 import contextlib
@@ -10,11 +11,13 @@ from fastapi import FastAPI
 
 from app.api.v1 import router as api_v1_router
 from app.core.config import Settings, get_settings
-from app.core.errors import RequestContextMiddleware, install_error_handlers
+from app.core.errors import REQUEST_ID_HEADER, RequestContextMiddleware, install_error_handlers
+from app.core.headers import SecurityHeadersMiddleware
 from app.core.limits import BodySizeLimitMiddleware
 from app.core.logging import configure_logging
 from app.core.mail import Mailer, create_mailer
 from app.core.rate_limit import RateLimiter
+from app.core.security import CORS_HEADERS, CORS_METHODS, WebOriginCORSMiddleware
 from app.db.session import create_database
 from app.ml.encoders import create_encoder
 from app.ml.worker import EmbeddingWorker
@@ -67,16 +70,28 @@ def create_http_app(settings: Settings, *, mailer: Mailer | None = None) -> Fast
     app.state.presence = Presence()
     app.state.calls = CallRegistry()
     install_error_handlers(app)
-    # Added first, so it runs inside RequestContextMiddleware and its 413s carry a request ID.
+    # Each add_middleware wraps the ones before it. Added first, so it runs inside
+    # RequestContextMiddleware and its 413s carry a request ID.
     app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_body_bytes)
     app.add_middleware(RequestContextMiddleware)
+    # Outside the request context, so the web origin can still read the 500 it answers an
+    # unhandled error with. The security headers wrap everything, in create_app.
+    app.add_middleware(
+        WebOriginCORSMiddleware,
+        allow_origins=[settings.web_origin],
+        allow_credentials=True,
+        allow_methods=list(CORS_METHODS),
+        allow_headers=list(CORS_HEADERS),
+        # Read by the web client when an error arrives without the JSON envelope.
+        expose_headers=[REQUEST_ID_HEADER],
+    )
     app.include_router(api_v1_router, prefix="/api/v1")
     return app
 
 
 def create_app(
     settings: Settings | None = None, *, mailer: Mailer | None = None
-) -> socketio.ASGIApp:
+) -> SecurityHeadersMiddleware:
     settings = settings or get_settings()
     http_app = create_http_app(settings, mailer=mailer)
     state = http_app.state
@@ -85,7 +100,14 @@ def create_app(
     )
     http_app.state.sio = sio  # lets logout and password reset disconnect sockets
     http_app.state.room_access = rooms_hooks.recheck_room_access
-    return socketio.ASGIApp(sio, other_asgi_app=http_app)
+    # One headers layer around everything: Engine.IO answers /socket.io/ itself, and Starlette's
+    # outermost error handler sits outside every middleware the HTTP app adds.
+    docs = [http_app.docs_url, http_app.swagger_ui_oauth2_redirect_url] if http_app.docs_url else []
+    return SecurityHeadersMiddleware(
+        socketio.ASGIApp(sio, other_asgi_app=http_app),
+        hsts=settings.is_production,
+        csp_exempt_paths=[path for path in docs if path],
+    )
 
 
 app = create_app()

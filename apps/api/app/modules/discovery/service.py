@@ -132,13 +132,13 @@ class DiscoveryService:
     async def _may_record(self, viewer_id: uuid.UUID, candidate_id: uuid.UUID) -> bool:
         if candidate_id == viewer_id:
             return False
-        # FOR SHARE: ProfileService.save() upserts the profile row first and holds that row's
-        # lock until it commits. Without this lock, a plain read here could see consent that a
-        # concurrent save is in the middle of withdrawing (and whose purge already ran, before
-        # its own commit), so we'd insert a row its DELETE can never see. Taking the lock makes
-        # us wait for that save to finish and then re-read the consent it actually left behind;
-        # conversely, a feedback write already in flight makes a save's upsert wait for us, so
-        # its purge runs after our commit and still catches the row we just wrote.
+        # FOR SHARE: ProfileService.save() locks the account and then upserts the profile row,
+        # holding that row's lock until it commits. Without this lock, a plain read here could see
+        # consent that a concurrent save is in the middle of withdrawing (and whose purge already
+        # ran, before its own commit), so we'd insert a row its DELETE can never see. Taking the
+        # lock makes us wait for that save to finish and then re-read the consent it actually left
+        # behind; conversely, a feedback write already in flight makes a save's upsert wait for us,
+        # so its purge runs after our commit and still catches the row we just wrote.
         consents = await self.db.scalar(
             select(Profile.user_id)
             .where(

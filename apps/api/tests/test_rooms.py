@@ -38,7 +38,7 @@ async def connect_direct(a: httpx.AsyncClient, b: httpx.AsyncClient) -> str:
 
 
 def calls_registry(app: object) -> Any:
-    return app.other_asgi_app.state.calls  # type: ignore[attr-defined]
+    return app.app.other_asgi_app.state.calls  # type: ignore[attr-defined]
 
 
 @pytest.fixture

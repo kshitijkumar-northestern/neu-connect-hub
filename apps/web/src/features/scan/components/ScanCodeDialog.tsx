@@ -108,6 +108,9 @@ export function ScanCodeDialog({ open, onOpenChange }: ScanCodeDialogProps) {
   // "Start camera" button re-renders disabled) so a rapid double click can only ever start one
   // getUserMedia request.
   const startingRef = useRef(false);
+  // The control that opened the dialog. The pages open it from their own button, not a
+  // DialogTrigger, so Radix has nothing to give focus back to on close; this does it instead.
+  const openerRef = useRef<HTMLElement | null>(null);
 
   function stopCamera() {
     attemptIdRef.current += 1;
@@ -235,7 +238,20 @@ export function ScanCodeDialog({ open, onOpenChange }: ScanCodeDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent>
+      <DialogContent
+        onOpenAutoFocus={() => {
+          // Runs before focus moves into the dialog, so this is still the opening button.
+          const opener = document.activeElement;
+          openerRef.current = opener instanceof HTMLElement && opener !== document.body ? opener : null;
+        }}
+        onCloseAutoFocus={(event) => {
+          // Not after a scan that navigated away: the button is gone with its page.
+          if (openerRef.current?.isConnected) {
+            event.preventDefault();
+            openerRef.current.focus();
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Scan a code</DialogTitle>
           <DialogDescription>Scan a Scan to Connect code to see who it is.</DialogDescription>

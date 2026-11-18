@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ADA, apiError, fakeApi } from "@/test/fake-api";
+import { expectNoAxeViolations } from "@/test/axe";
 import { renderApp } from "@/test/render-app";
 
 const reverify = vi.fn();
@@ -207,5 +208,24 @@ describe("ReportDetailPage", () => {
     resolveReload?.();
 
     expect(await screen.findByText("This report isn't available.")).toBeInTheDocument();
+  });
+});
+
+describe("ReportDetailPage: accessibility", () => {
+  it("the report and the suspend confirmation have no axe violations", async () => {
+    const user = userEvent.setup();
+    fakeApi({
+      "GET /me": [200, ADMIN],
+      "GET /admin/mfa": [200, MFA_VERIFIED],
+      [`GET /admin/reports/${REPORT_ID}`]: [200, DETAIL],
+    });
+    renderApp(`/admin/reports/${REPORT_ID}`);
+
+    expect(await screen.findByText("Harassment")).toBeInTheDocument();
+    await expectNoAxeViolations();
+
+    await user.click(screen.getByRole("button", { name: "Suspend account" }));
+    expect(await screen.findByRole("alertdialog")).toBeInTheDocument();
+    await expectNoAxeViolations();
   });
 });
