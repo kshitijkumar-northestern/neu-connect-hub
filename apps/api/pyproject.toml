@@ -72,7 +72,7 @@ known-first-party = ["app", "scripts", "tests"]
 [tool.mypy]
 strict = true
 plugins = ["pydantic.mypy"]
-files = ["app", "scripts"]
+files = ["app", "scripts", "experiments"]
 
 [[tool.mypy.overrides]]
 # python-socketio ships no type information.
