@@ -12,7 +12,7 @@ aiosignal==1.4.0
     # via aiohttp
 alembic==1.20.1
     # via neu-connect-hub-api (pyproject.toml)
-annotated-doc==0.0.6
+annotated-doc==0.0.7
     # via fastapi
 annotated-types==0.8.0
     # via pydantic
@@ -37,7 +37,7 @@ bidict==0.24.1
     # via python-socketio
 build==1.6.1
     # via pip-tools
-certifi==2026.10.23
+certifi==2026.11.20
     # via
     #   httpcore
     #   httpx
@@ -49,9 +49,9 @@ click==8.5.1
     #   uvicorn
 dnspython==2.9.2
     # via email-validator
-email-validator==2.3.0
+email-validator==2.4.0
     # via pydantic
-fastapi==0.163.0
+fastapi==0.165.0
     # via neu-connect-hub-api (pyproject.toml)
 frozenlist==1.8.0
     # via
@@ -78,7 +78,7 @@ idna==3.20
     #   yarl
 iniconfig==2.3.1
     # via pytest
-librt==0.16.0
+librt==0.17.0
     # via mypy
 mako==1.4.3
     # via alembic
@@ -107,7 +107,7 @@ pathspec==1.1.1
     # via mypy
 pgvector==0.5.1
     # via neu-connect-hub-api (pyproject.toml)
-pip-tools==7.6.2
+pip-tools==7.7.0
     # via neu-connect-hub-api (pyproject.toml)
 pluggy==1.7.0
     # via pytest
@@ -117,12 +117,12 @@ propcache==0.5.4
     #   yarl
 pycparser==3.12
     # via cffi
-pydantic==2.14.3
+pydantic==2.14.4
     # via
     #   fastapi
     #   neu-connect-hub-api (pyproject.toml)
     #   pydantic-settings
-pydantic-core==2.50.4
+pydantic-core==2.50.5
     # via pydantic
 pydantic-settings==2.16.3
     # via neu-connect-hub-api (pyproject.toml)
@@ -148,17 +148,17 @@ python-engineio==4.15.1
     # via python-socketio
 python-socketio==5.18.1
     # via neu-connect-hub-api (pyproject.toml)
-pyyaml==6.0.3
+pyyaml==6.0.4
     # via
     #   bandit
     #   uvicorn
 rich==15.0.0
     # via bandit
-ruff==0.17.5
+ruff==0.17.6
     # via neu-connect-hub-api (pyproject.toml)
 simple-websocket==1.1.0
     # via python-engineio
-sqlalchemy==2.1.8
+sqlalchemy==2.1.9
     # via
     #   alembic
     #   neu-connect-hub-api (pyproject.toml)
